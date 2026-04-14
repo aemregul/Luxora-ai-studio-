@@ -155,12 +155,12 @@ export default function LuxoraStudio() {
   // RENDER
   // ============================================
   return (
-    <div className="studio">
+    <div style={{ display: 'grid', gridTemplateRows: '56px 1fr', gridTemplateColumns: '260px 1fr 260px', height: '100vh', overflow: 'hidden' }}>
 
       {/* ======================================== */}
       {/* HEADER                                    */}
       {/* ======================================== */}
-      <header className="studio-header">
+      <header style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: '#111114', zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg, #e9c86e, #b3862a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Crown size={15} color="#000" />
@@ -179,7 +179,7 @@ export default function LuxoraStudio() {
       {/* ======================================== */}
       {/* LEFT SIDEBAR                              */}
       {/* ======================================== */}
-      <aside className="studio-sidebar">
+      <aside style={{ overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0' }}>
         {/* Tools */}
         <div style={{ padding: '0 20px', marginBottom: 6 }}>
           <div className="panel-label">Araçlar</div>
@@ -237,7 +237,7 @@ export default function LuxoraStudio() {
       {/* ======================================== */}
       {/* MAIN CANVAS                               */}
       {/* ======================================== */}
-      <main className="studio-canvas">
+      <main style={{ overflowY: 'auto', background: '#0a0a0c', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative' }}>
 
         {/* === NO IMAGE: Upload Area === */}
         {!img && !res && (
@@ -345,7 +345,7 @@ export default function LuxoraStudio() {
       {/* ======================================== */}
       {/* RIGHT PANEL                               */}
       {/* ======================================== */}
-      <aside className="studio-panel">
+      <aside style={{ overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '20px 16px' }}>
 
         {/* === REDESIGN TOOL === */}
         {tool === "redesign" && (
