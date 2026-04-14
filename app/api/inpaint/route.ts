@@ -13,8 +13,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'FAL API anahtarı yapılandırılmamış' }, { status: 500 });
     }
 
+    const isRemoveMode = !prompt || !prompt.trim();
     console.log("=== LUXORA INPAINT ===");
-    console.log("Prompt:", prompt || "(boş - silme modu)");
+    console.log("Mode:", isRemoveMode ? "REMOVE (silme)" : "REPLACE (değiştirme)");
+    console.log("Prompt:", prompt || "(boş)");
 
     // Upload image & mask to Fal CDN
     let imageUrl = image;
@@ -27,48 +29,76 @@ export async function POST(request: NextRequest) {
       maskUrl = await uploadToFalCDN(mask, FAL_KEY);
     }
 
-    console.log("Image URL:", imageUrl.substring(0, 60) + "...");
-    console.log("Mask URL:", maskUrl.substring(0, 60) + "...");
-
-    // Build prompt
-    const inpaintPrompt = prompt && prompt.trim()
-      ? `${prompt.trim()}. Seamlessly blend with the surrounding area. Photorealistic, matching lighting and perspective exactly.`
-      : "Remove the masked area and fill with a natural continuation of the surrounding environment. Seamlessly blend, photorealistic.";
-
     let resultUrl: string | null = null;
 
-    // Model 1: Nano Banana Pro Inpaint
-    try {
-      console.log("Model 1: Nano Banana Pro Inpaint...");
-      resultUrl = await inpaintWithNanoBananaPro(imageUrl, maskUrl, inpaintPrompt, FAL_KEY);
-      console.log("✅ Nano Banana Pro Inpaint başarılı!");
-    } catch (err) {
-      console.error("❌ Nano Banana Pro Inpaint hatası:", err);
-    }
+    if (isRemoveMode) {
+      // ========== REMOVE MODE ==========
+      // Bria Eraser first — purpose-built for clean object removal
+      // Preserves surrounding textures (carpets, walls etc.) perfectly
 
-    // Model 2: FLUX Fill Pro
-    if (!resultUrl) {
+      // Model 1: Bria Eraser (best for removal)
       try {
-        console.log("Model 2: FLUX Fill Pro...");
-        resultUrl = await inpaintWithFluxFill(imageUrl, maskUrl, inpaintPrompt, FAL_KEY);
-        console.log("✅ FLUX Fill başarılı!");
-      } catch (err) {
-        console.error("❌ FLUX Fill hatası:", err);
-      }
-    }
-
-    // Model 3: Bria Eraser (son çare - obje silme)
-    if (!resultUrl) {
-      try {
-        console.log("Model 3: Bria Eraser...");
+        console.log("Remove Model 1: Bria Eraser...");
         resultUrl = await inpaintWithBriaEraser(imageUrl, maskUrl, FAL_KEY);
         console.log("✅ Bria Eraser başarılı!");
       } catch (err) {
         console.error("❌ Bria Eraser hatası:", err);
-        throw new Error("Inpainting başarısız. Lütfen tekrar deneyin.");
+      }
+
+      // Model 2: FLUX Fill with minimal prompt
+      if (!resultUrl) {
+        try {
+          console.log("Remove Model 2: FLUX Fill Pro...");
+          const removePrompt = "empty floor, empty wall, natural continuation of the exact same surrounding materials and textures, no new objects, no changes";
+          resultUrl = await inpaintWithFluxFill(imageUrl, maskUrl, removePrompt, FAL_KEY);
+          console.log("✅ FLUX Fill başarılı!");
+        } catch (err) {
+          console.error("❌ FLUX Fill hatası:", err);
+        }
+      }
+
+      // Model 3: Nano Banana Pro with strict removal prompt
+      if (!resultUrl) {
+        try {
+          console.log("Remove Model 3: Nano Banana Pro...");
+          const removePrompt = "Remove the object in the masked area. Fill with the exact same floor/wall material visible around it. Do not add any new objects. Preserve all textures and patterns exactly.";
+          resultUrl = await inpaintWithNanoBananaPro(imageUrl, maskUrl, removePrompt, FAL_KEY);
+          console.log("✅ Nano Banana Pro başarılı!");
+        } catch (err) {
+          console.error("❌ Nano Banana Pro hatası:", err);
+          throw new Error("Silme işlemi başarısız. Lütfen tekrar deneyin.");
+        }
+      }
+
+    } else {
+      // ========== REPLACE MODE ==========
+      // User wants to put something specific in the masked area
+
+      const replacePrompt = `${prompt.trim()}. CRITICAL: ONLY modify the masked white area. Every single pixel outside the mask must remain EXACTLY identical — same carpet pattern, same wall texture, same floor material, same furniture, same colors, same lighting. Seamlessly blend the new element with its surroundings. Match perspective, lighting direction, and shadows precisely. Photorealistic quality.`;
+
+      // Model 1: Nano Banana Pro (best quality for replacement)
+      try {
+        console.log("Replace Model 1: Nano Banana Pro...");
+        resultUrl = await inpaintWithNanoBananaPro(imageUrl, maskUrl, replacePrompt, FAL_KEY);
+        console.log("✅ Nano Banana Pro başarılı!");
+      } catch (err) {
+        console.error("❌ Nano Banana Pro hatası:", err);
+      }
+
+      // Model 2: FLUX Fill Pro
+      if (!resultUrl) {
+        try {
+          console.log("Replace Model 2: FLUX Fill Pro...");
+          resultUrl = await inpaintWithFluxFill(imageUrl, maskUrl, replacePrompt, FAL_KEY);
+          console.log("✅ FLUX Fill başarılı!");
+        } catch (err) {
+          console.error("❌ FLUX Fill hatası:", err);
+          throw new Error("Değiştirme işlemi başarısız. Lütfen tekrar deneyin.");
+        }
       }
     }
 
+    console.log("=== INPAINT TAMAMLANDI ===");
     return NextResponse.json({ success: true, resultImage: resultUrl });
 
   } catch (error) {
