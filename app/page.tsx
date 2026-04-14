@@ -819,7 +819,7 @@ export default function LuxoraStudio() {
                       background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
                       textAlign: 'center',
                     }}>
-                      {['Kapıdan', 'Sol Duvar', 'Sağ Duvar', 'Pencere', 'Karşı', 'Kuş Bakışı', 'Alçak Açı', 'Detay', '3/4 Açı'][i]}
+                      {['Kapıdan', 'Sol Duvar', 'Sağ Duvar', 'Pencere', 'Ters Açı', 'Kuş Bakışı', 'Yerden', 'Detay', '3/4 Açı'][i]}
                     </div>
                   )}
                 </div>
@@ -1159,7 +1159,7 @@ export default function LuxoraStudio() {
             {/* Grid info */}
             <div className="panel-section">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
-                {['Kapıdan', 'Sol', 'Sağ', 'Pencere', 'Karşı', 'Kuş Bakışı', 'Alçak', 'Detay', '3/4 Açı'].map((label, i) => (
+                {['Kapıdan', 'Sol', 'Sağ', 'Pencere', 'Ters Açı', 'Kuş Bakışı', 'Yerden', 'Detay', '3/4 Açı'].map((label, i) => (
                   <div key={i} style={{
                     fontSize: 9, textAlign: 'center', padding: '6px 2px',
                     borderRadius: 6, background: gridPanels[i] ? 'rgba(212,165,55,0.08)' : 'rgba(255,255,255,0.02)',

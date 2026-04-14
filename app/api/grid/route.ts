@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const ROOM_ANGLES = [
-  { label: "Geniş Açı - Kapıdan Bakış", prompt: "ultra wide angle shot from the doorway entrance looking into the room, full room visible, architectural photography, same interior design and furniture" },
-  { label: "Sol Duvar Perspektifi", prompt: "interior shot from the left wall corner looking across to the right wall, showing depth of the room, same furniture and decor" },
-  { label: "Sağ Duvar Perspektifi", prompt: "interior shot from the right wall corner looking across to the left wall, room depth visible, same interior design" },
-  { label: "Pencere Yönü", prompt: "shot looking toward the window wall, natural light streaming in, same room furniture and layout" },
-  { label: "Karşı Duvar", prompt: "shot from the far end of the room looking back toward the entrance/door, reverse perspective, same interior" },
-  { label: "Yukarıdan Bakış (Bird's Eye)", prompt: "bird's eye view from above looking straight down at the room layout, aerial perspective, same furniture arrangement" },
-  { label: "Alçak Açı", prompt: "low angle shot from near floor level looking up, dramatic perspective showing ceiling and upper walls, same room design" },
-  { label: "Köşe Detay", prompt: "close-up detail shot of a corner of the room, showing material textures, furniture details, decorative objects" },
-  { label: "Panoramik 3/4 Açı", prompt: "three-quarter angle wide shot capturing most of the room, slightly elevated perspective, interior architecture photography, same design" },
+  { label: "Geniş Açı - Kapıdan Bakış", prompt: "Reposition the camera to the doorway entrance. Ultra wide angle 14mm lens, camera at eye level standing in the doorframe, looking straight into the room. The entire room is visible from wall to wall." },
+  { label: "Sol Duvar Perspektifi", prompt: "Reposition the camera to the far left corner of the room. Camera pressed against the left wall, angled 45 degrees to the right, showing the right wall and far wall in a diagonal composition. Strong perspective lines." },
+  { label: "Sağ Duvar Perspektifi", prompt: "Reposition the camera to the far right corner of the room. Camera pressed against the right wall, angled 45 degrees to the left, showing the left wall stretching away. Opposite perspective from the left wall shot." },
+  { label: "Pencere Yönü - İçeriden Dışa", prompt: "Reposition the camera to face directly toward the window. Camera is inside the room pointing straight at the window, silhouette effect, backlit by natural window light, furniture in foreground as dark shapes against bright window." },
+  { label: "Karşı Duvar - Ters Açı", prompt: "Reposition the camera to the opposite end of the room, 180 degree reverse angle. Camera now faces back toward where the original photo was taken. Everything is seen from the reverse direction." },
+  { label: "Yukarıdan Bakış (Bird's Eye)", prompt: "Reposition the camera directly above the room center, looking straight down. Top-down bird's eye view, floor plan perspective, all furniture seen from directly above, no walls visible, only floor and furniture tops." },
+  { label: "Alçak Açı - Yerden", prompt: "Reposition the camera to floor level, only 20cm above the ground. Extreme low angle looking upward, furniture legs prominent in foreground, ceiling visible, dramatic upward perspective, worm's eye view." },
+  { label: "Yakın Çekim Detay", prompt: "Reposition the camera very close to the most interesting furniture piece or decoration, macro-style close-up. Only one item fills most of the frame with sharp detail, shallow depth of field, background blurred." },
+  { label: "Panoramik 3/4 Açı", prompt: "Reposition the camera to a high corner near the ceiling. Elevated 3/4 overhead angle looking down diagonally across the entire room, showing the complete layout from above at 45 degrees, like a security camera angle." },
 ];
 
 export async function POST(request: NextRequest) {
@@ -31,10 +31,10 @@ export async function POST(request: NextRequest) {
     const roomName = roomType || "room";
     const styleName = designStyle || "luxury";
 
-    const finalPrompt = `Show this exact same ${roomName} interior from a different camera angle: ${angle.prompt}. ` +
-      `CRITICAL: Keep the EXACT same room — same furniture, same wall colors, same floor material, same decorations, same lighting style. ` +
-      `Only the camera position and angle changes. The room design is ${styleName} style. ` +
-      `Photorealistic, 8K, professional architectural photography, magazine quality.`;
+    const finalPrompt = `Transform this ${roomName} photo into a COMPLETELY DIFFERENT camera angle. ${angle.prompt}. ` +
+      `The room itself stays identical — same furniture, same colors, same materials, same ${styleName} style. ` +
+      `But the camera MUST be in a dramatically different position. The resulting image should look like a completely different photo taken in the same room. ` +
+      `Professional architectural photography, photorealistic, 8K quality.`;
 
     console.log(`=== GRID PANEL ${idx + 1}/9: ${angle.label} ===`);
 
