@@ -93,7 +93,13 @@ export default function LuxoraStudio() {
   const cmpRef = useRef<HTMLDivElement>(null);
   const sideTimer = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => setOk(true), []);
+  useEffect(() => {
+    setOk(true);
+    try {
+      const saved = localStorage.getItem('luxora_history');
+      if (saved) setHist(JSON.parse(saved));
+    } catch {}
+  }, []);
 
   // Lightbox ESC key
   useEffect(() => {
@@ -139,7 +145,12 @@ export default function LuxoraStudio() {
         done = true; if (iv) clearInterval(iv); setProg(100); setStat("Tamamlandı!");
         await new Promise(r => setTimeout(r, 400));
         setRes(d.resultImage); setPos(50);
-        setHist(p => [{ id: Date.now() + "", orig: img, result: d.resultImage, room: ROOMS.find(x => x.id === room)?.label || room, style: STYLES.find(x => x.id === style)?.label || style, ts: Date.now(), tool }, ...p]);
+        const newItem: Result = { id: Date.now() + '', orig: img, result: d.resultImage, room: ROOMS.find(x => x.id === room)?.label || room, style: STYLES.find(x => x.id === style)?.label || style, ts: Date.now(), tool };
+        setHist(p => {
+          const updated = [newItem, ...p].slice(0, 50);
+          try { localStorage.setItem('luxora_history', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
       } else throw new Error("Üretilemedi");
     } catch (e) { done = true; if (iv) clearInterval(iv); setProg(0); setErr(e instanceof Error ? e.message : "Hata"); }
     finally { setBusy(false); }
