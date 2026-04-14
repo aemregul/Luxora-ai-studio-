@@ -80,14 +80,17 @@ export async function POST(request: NextRequest) {
     const body: Record<string, unknown> = {
       prompt: videoPrompt,
       image_url: startUrl,
-      duration: duration || 5,
-      resolution: "720p",
+      duration: String(duration || 5),
+      resolution: "480p",
       aspect_ratio: "16:9",
+      generate_audio: false,
     };
 
     if (endUrl) {
       body.end_image_url = endUrl;
     }
+
+    console.log("Body:", JSON.stringify(body, null, 2));
 
     // Submit to queue (returns immediately with request_id)
     const submitRes = await fetch(`https://queue.fal.run/${modelEndpoint}`, {

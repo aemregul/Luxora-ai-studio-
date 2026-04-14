@@ -487,7 +487,7 @@ export default function LuxoraStudio() {
   };
 
   // ============ WALKTHROUGH ============
-  const WALK_ROUTE = [0, 3, 4, 8]; // Kapı → Pencere → Ters → Panoramik (3 segment = daha hızlı)
+  const WALK_ROUTE = [0, 4, 8]; // Kapı → Ters → Panoramik (2 segment = çok daha hızlı)
 
   const genWalkthrough = async () => {
     const available = WALK_ROUTE.filter(i => gridPanels[i]);
@@ -510,7 +510,7 @@ export default function LuxoraStudio() {
             startImage: startPanel,
             endImage: endPanel,
             prompt: 'Smooth cinematic camera transition between two angles of the same room, slow dolly movement, professional architectural videography',
-            duration: 5,
+            duration: 4,
             model: 'fast',
           }),
         });
