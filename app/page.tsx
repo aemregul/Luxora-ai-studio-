@@ -7,7 +7,7 @@ import {
   Flower2, Armchair, Sparkles, Info, Box, Plus, ExternalLink,
   RotateCcw, Compass, Crown, Ship, Paintbrush, Grid3x3,
   Film, ChevronRight, ChevronLeft, Clock, Eye, Settings2, Wand2, Layers,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, FolderOpen, ChevronDown, Pencil,
 } from "lucide-react";
 
 // ============================================
@@ -17,6 +17,11 @@ type Tool = "redesign" | "inpaint" | "grid" | "video";
 type Room = { id: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
 type Style = { id: string; label: string };
 type Result = { id: string; orig: string; result: string; room: string; style: string; ts: number; tool: Tool };
+type Project = { id: string; name: string; createdAt: number; history: Result[] };
+
+const LS_KEY = 'luxora_projects';
+const loadProjects = (): Project[] => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : []; } catch { return []; } };
+const saveProjects = (p: Project[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(p)); } catch {} };
 
 const ROOMS: Room[] = [
   { id: "salon", label: "Salon", icon: Home },
@@ -78,7 +83,6 @@ export default function LuxoraStudio() {
   const [prog, setProg] = useState(0);
   const [stat, setStat] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [hist, setHist] = useState<Result[]>([]);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [pos, setPos] = useState(50);
   const [sliding, setSliding] = useState(false);
@@ -88,18 +92,67 @@ export default function LuxoraStudio() {
   const [light, setLight] = useState(false);
   const [keep, setKeep] = useState(true);
   const [ok, setOk] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projId, setProjId] = useState<string | null>(null);
+  const [projMenu, setProjMenu] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState('');
 
   const fileRef = useRef<HTMLInputElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
   const sideTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // Current project
+  const proj = projects.find(p => p.id === projId) || null;
+  const hist = proj?.history || [];
+
   useEffect(() => {
     setOk(true);
+    const loaded = loadProjects();
+    if (loaded.length > 0) {
+      setProjects(loaded);
+      setProjId(loaded[0].id);
+    }
+    // Migrate old history
     try {
-      const saved = localStorage.getItem('luxora_history');
-      if (saved) setHist(JSON.parse(saved));
+      const old = localStorage.getItem('luxora_history');
+      if (old && loaded.length === 0) {
+        const oldHist: Result[] = JSON.parse(old);
+        if (oldHist.length > 0) {
+          const migrated: Project = { id: Date.now() + '', name: 'Eski Tasarımlar', createdAt: Date.now(), history: oldHist };
+          setProjects([migrated]);
+          setProjId(migrated.id);
+          saveProjects([migrated]);
+          localStorage.removeItem('luxora_history');
+        }
+      }
     } catch {}
   }, []);
+
+  // Project helpers
+  const newProject = () => {
+    const p: Project = { id: Date.now() + '', name: `Proje ${projects.length + 1}`, createdAt: Date.now(), history: [] };
+    const updated = [p, ...projects];
+    setProjects(updated); setProjId(p.id); saveProjects(updated);
+    setImg(null); setRes(null); setProjMenu(false);
+  };
+
+  const deleteProject = (id: string) => {
+    const updated = projects.filter(p => p.id !== id);
+    setProjects(updated); saveProjects(updated);
+    if (projId === id) { setProjId(updated[0]?.id || null); setImg(null); setRes(null); }
+  };
+
+  const renameProject = (id: string, name: string) => {
+    const updated = projects.map(p => p.id === id ? { ...p, name } : p);
+    setProjects(updated); saveProjects(updated); setRenaming(null);
+  };
+
+  const addToHistory = (item: Result) => {
+    if (!projId) return;
+    const updated = projects.map(p => p.id === projId ? { ...p, history: [item, ...p.history].slice(0, 100) } : p);
+    setProjects(updated); saveProjects(updated);
+  };
 
   // Lightbox ESC key
   useEffect(() => {
@@ -111,6 +164,12 @@ export default function LuxoraStudio() {
   // File
   const onFile = (f: File) => {
     if (!f.type.startsWith("image/")) return;
+    // Auto-create project if none exists
+    if (!projId) {
+      const p: Project = { id: Date.now() + '', name: 'Proje 1', createdAt: Date.now(), history: [] };
+      const updated = [p, ...projects];
+      setProjects(updated); setProjId(p.id); saveProjects(updated);
+    }
     const r = new FileReader();
     r.onload = () => { setImg(r.result as string); setRes(null); setErr(null); };
     r.readAsDataURL(f);
@@ -146,11 +205,7 @@ export default function LuxoraStudio() {
         await new Promise(r => setTimeout(r, 400));
         setRes(d.resultImage); setPos(50);
         const newItem: Result = { id: Date.now() + '', orig: img, result: d.resultImage, room: ROOMS.find(x => x.id === room)?.label || room, style: STYLES.find(x => x.id === style)?.label || style, ts: Date.now(), tool };
-        setHist(p => {
-          const updated = [newItem, ...p].slice(0, 50);
-          try { localStorage.setItem('luxora_history', JSON.stringify(updated)); } catch {}
-          return updated;
-        });
+        addToHistory(newItem);
       } else throw new Error("Üretilemedi");
     } catch (e) { done = true; if (iv) clearInterval(iv); setProg(0); setErr(e instanceof Error ? e.message : "Hata"); }
     finally { setBusy(false); }
@@ -183,12 +238,130 @@ export default function LuxoraStudio() {
             Luxora <span style={{ color: '#d4a537' }}>AI</span>
           </span>
           <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: '#d4a537', background: 'rgba(212,165,55,0.1)', padding: '3px 8px', borderRadius: 6, marginLeft: 4 }}>STUDIO</span>
+
+          {/* Separator */}
+          <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.08)', margin: '0 4px' }} />
+
+          {/* Project Selector */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setProjMenu(!projMenu)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                height: 34, padding: '0 12px', borderRadius: 8,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                color: '#ccc', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <FolderOpen size={14} color="#d4a537" />
+              <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {proj?.name || 'Proje Seç'}
+              </span>
+              <ChevronDown size={12} color="#666" />
+            </button>
+
+            {/* Project Dropdown */}
+            {projMenu && (
+              <div
+                style={{
+                  position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                  width: 280, maxHeight: 360, overflowY: 'auto',
+                  background: '#1a1a1f', border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                  zIndex: 100, padding: '6px',
+                }}
+              >
+                {/* New Project */}
+                <button
+                  onClick={newProject}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', borderRadius: 8,
+                    background: 'rgba(212,165,55,0.06)', border: '1px dashed rgba(212,165,55,0.2)',
+                    color: '#d4a537', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    marginBottom: 4, transition: 'all 0.15s',
+                  }}
+                >
+                  <Plus size={14} /> Yeni Proje Oluştur
+                </button>
+
+                {projects.length === 0 && (
+                  <div style={{ padding: '16px 12px', textAlign: 'center', color: '#444', fontSize: 12 }}>
+                    Henüz proje yok
+                  </div>
+                )}
+
+                {projects.map(p => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                      borderRadius: 8, cursor: 'pointer', transition: 'background 0.1s',
+                      background: p.id === projId ? 'rgba(212,165,55,0.08)' : 'transparent',
+                    }}
+                    onMouseOver={e => { if (p.id !== projId) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseOut={e => { if (p.id !== projId) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div
+                      onClick={() => { setProjId(p.id); setProjMenu(false); setImg(null); setRes(null); }}
+                      style={{ flex: 1, minWidth: 0 }}
+                    >
+                      {renaming === p.id ? (
+                        <input
+                          autoFocus
+                          value={renameVal}
+                          onChange={e => setRenameVal(e.target.value)}
+                          onBlur={() => renameProject(p.id, renameVal || p.name)}
+                          onKeyDown={e => { if (e.key === 'Enter') renameProject(p.id, renameVal || p.name); }}
+                          onClick={e => e.stopPropagation()}
+                          style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(212,165,55,0.3)', borderRadius: 6, padding: '4px 8px', color: '#fff', fontSize: 12, outline: 'none' }}
+                        />
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: p.id === projId ? '#d4a537' : '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {p.name}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>
+                            {p.history.length} tasarım · {new Date(p.createdAt).toLocaleDateString('tr-TR')}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      onClick={e => { e.stopPropagation(); setRenaming(p.id); setRenameVal(p.name); }}
+                      style={{ width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', color: '#555', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}
+                      onMouseOver={e => e.currentTarget.style.color = '#aaa'}
+                      onMouseOut={e => e.currentTarget.style.color = '#555'}
+                      title="Yeniden adlandır"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    {projects.length > 1 && (
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteProject(p.id); }}
+                        style={{ width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', color: '#444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}
+                        onMouseOver={e => e.currentTarget.style.color = '#ef4444'}
+                        onMouseOut={e => e.currentTarget.style.color = '#444'}
+                        title="Projeyi sil"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 11, color: '#666' }}>v2.0</span>
         </div>
       </header>
+
+      {/* Close project menu overlay */}
+      {projMenu && <div onClick={() => setProjMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />}
 
       {/* ======================================== */}
       {/* LEFT SIDEBAR                              */}
