@@ -584,6 +584,34 @@ export default function LuxoraStudio() {
               </div>
               <span style={{ fontSize: 10, color: '#444' }}>Çift tıkla: tam ekran</span>
             </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                onClick={() => { setImg(null); setRes(null); }}
+                style={{
+                  flex: 1, height: 40, borderRadius: 10,
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#aaa', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <Upload size={14} />Yeni Görsel Yükle
+              </button>
+              <button
+                onClick={() => { setRes(null); }}
+                style={{
+                  flex: 1, height: 40, borderRadius: 10,
+                  background: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)',
+                  color: '#d4a537', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <RotateCcw size={14} />Tekrar Dene
+              </button>
+            </div>
           </div>
         )}
 
