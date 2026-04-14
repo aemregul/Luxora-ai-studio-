@@ -184,91 +184,108 @@ export default function LuxoraStudio() {
       {/* ======================================== */}
       <aside
         onMouseEnter={() => { if (sideTimer.current) { clearTimeout(sideTimer.current); sideTimer.current = null; } setSideOpen(true); }}
-        onMouseLeave={() => { sideTimer.current = setTimeout(() => setSideOpen(false), 300); }}
-        style={{ overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0', display: 'flex', flexDirection: 'column' as const, transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)' }}
+        onMouseLeave={() => { sideTimer.current = setTimeout(() => setSideOpen(false), 400); }}
+        style={{
+          overflowY: 'auto', overflowX: 'hidden',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          background: '#111114', padding: '12px 0',
+          display: 'flex', flexDirection: 'column' as const,
+        }}
       >
         {/* Tools */}
-        {sideOpen && (
-          <div style={{ padding: '0 20px', marginBottom: 6 }}>
-            <div className="panel-label">Araçlar</div>
-          </div>
-        )}
         {TOOLS.map(t => {
           const I = t.icon;
+          const isActive = tool === t.id;
           return (
             <div
               key={t.id}
               onClick={() => setTool(t.id)}
-              title={!sideOpen ? t.label : undefined}
+              title={t.label}
               style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: sideOpen ? '10px 20px' : '10px 0',
-                justifyContent: sideOpen ? 'flex-start' : 'center',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                color: tool === t.id ? '#d4a537' : '#666',
-                background: tool === t.id ? 'rgba(212,165,55,0.05)' : 'transparent',
-                borderLeft: tool === t.id ? '2px solid #d4a537' : '2px solid transparent',
-                transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center',
+                height: 44,
+                padding: '0 18px',
+                gap: 12,
+                cursor: 'pointer',
+                color: isActive ? '#d4a537' : '#666',
+                background: isActive ? 'rgba(212,165,55,0.06)' : 'transparent',
+                borderLeft: isActive ? '2px solid #d4a537' : '2px solid transparent',
+                transition: 'color 0.15s, background 0.15s',
+                whiteSpace: 'nowrap',
               }}
-              onMouseOver={e => { if (tool !== t.id) (e.currentTarget.style.color = '#aaa'); (e.currentTarget.style.background = 'rgba(255,255,255,0.02)'); }}
-              onMouseOut={e => { if (tool !== t.id) (e.currentTarget.style.color = '#666'); (e.currentTarget.style.background = tool === t.id ? 'rgba(212,165,55,0.05)' : 'transparent'); }}
+              onMouseOver={e => { if (!isActive) { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; } }}
+              onMouseOut={e => { if (!isActive) { e.currentTarget.style.color = '#666'; e.currentTarget.style.background = 'transparent'; } }}
             >
-              <I size={sideOpen ? 16 : 20} />
-              {sideOpen && (
-                <div>
-                  <div style={{ lineHeight: 1.2 }}>{t.label}</div>
-                  <div style={{ fontSize: 10, color: '#555', marginTop: 2, fontWeight: 400 }}>{t.desc}</div>
-                </div>
-              )}
+              <I size={18} style={{ flexShrink: 0 }} />
+              <span style={{
+                opacity: sideOpen ? 1 : 0,
+                transition: 'opacity 0.2s ease',
+                fontSize: 13, fontWeight: 500,
+                overflow: 'hidden',
+              }}>
+                {t.label}
+              </span>
             </div>
           );
         })}
 
         {/* Divider */}
-        <div style={{ height: 1, background: 'var(--bdr)', margin: sideOpen ? '16px 20px' : '16px 8px' }} />
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '12px 14px' }} />
 
-        {/* History */}
-        {sideOpen && (
-          <>
-            <div style={{ padding: '0 20px', marginBottom: 8 }}>
-              <div className="panel-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Clock size={10} /> Geçmiş {hist.length > 0 && <span style={{ color: '#555' }}>({hist.length})</span>}
-              </div>
-            </div>
+        {/* History Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '0 18px', marginBottom: 8,
+          opacity: sideOpen ? 1 : 0,
+          transition: 'opacity 0.2s ease',
+          whiteSpace: 'nowrap',
+        }}>
+          <Clock size={11} color="#555" />
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: '#555' }}>
+            Geçmiş {hist.length > 0 && `(${hist.length})`}
+          </span>
+        </div>
 
-            {hist.length === 0 && (
-              <div style={{ padding: '0 20px', fontSize: 11, color: '#444' }}>
-                Henüz tasarım yok
-              </div>
-            )}
-
-            {hist.map(h => (
-              <div
-                key={h.id}
-                className="hist-item"
-                onClick={() => { setImg(h.orig); setRes(h.result); setPos(50); }}
-              >
-                <div className="thumb">
-                  <img src={h.result} alt="" />
-                </div>
-                <div className="meta">
-                  <div className="title">{h.room} · {h.style}</div>
-                  <div className="sub">{new Date(h.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
-                </div>
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* Collapsed history icon */}
-        {!sideOpen && hist.length > 0 && (
-          <div
-            title="Geçmiş"
-            style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', color: '#555' }}
-          >
-            <Clock size={18} />
+        {/* History icon when collapsed */}
+        {!sideOpen && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0', color: '#444' }}>
+            <Clock size={16} />
           </div>
         )}
+
+        {/* History items */}
+        <div style={{
+          opacity: sideOpen ? 1 : 0,
+          transition: 'opacity 0.2s ease',
+          pointerEvents: sideOpen ? 'auto' : 'none',
+        }}>
+          {hist.length === 0 && (
+            <div style={{ padding: '0 18px', fontSize: 11, color: '#333' }}>
+              Henüz tasarım yok
+            </div>
+          )}
+          {hist.map(h => (
+            <div
+              key={h.id}
+              onClick={() => { setImg(h.orig); setRes(h.result); setPos(50); }}
+              style={{
+                display: 'flex', gap: 10, padding: '8px 18px',
+                cursor: 'pointer', transition: 'background 0.1s',
+                borderLeft: '2px solid transparent',
+              }}
+              onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <div style={{ width: 44, height: 32, borderRadius: 6, overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.06)' }}>
+                <img src={h.result} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                <div style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.room} · {h.style}</div>
+                <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>{new Date(h.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </aside>
 
       {/* ======================================== */}
