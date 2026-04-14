@@ -68,7 +68,7 @@ const STAGES = [
 export default function LuxoraStudio() {
   // — State
   const [tool, setTool] = useState<Tool>("redesign");
-  const [sideOpen, setSideOpen] = useState(true);
+  const [sideOpen, setSideOpen] = useState(false);
   const [room, setRoom] = useState("salon");
   const [style, setStyle] = useState("sessiz-luks");
   const [img, setImg] = useState<string | null>(null);
@@ -181,7 +181,11 @@ export default function LuxoraStudio() {
       {/* ======================================== */}
       {/* LEFT SIDEBAR                              */}
       {/* ======================================== */}
-      <aside style={{ overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0', display: 'flex', flexDirection: 'column' as const, transition: 'width 0.2s ease' }}>
+      <aside
+        onMouseEnter={() => setSideOpen(true)}
+        onMouseLeave={() => setSideOpen(false)}
+        style={{ overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0', display: 'flex', flexDirection: 'column' as const, transition: 'width 0.2s ease' }}
+      >
         {/* Tools */}
         {sideOpen && (
           <div style={{ padding: '0 20px', marginBottom: 6 }}>
@@ -258,33 +262,12 @@ export default function LuxoraStudio() {
         {/* Collapsed history icon */}
         {!sideOpen && hist.length > 0 && (
           <div
-            onClick={() => setSideOpen(true)}
-            title="Geçmişi göster"
-            style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', cursor: 'pointer', color: '#555', transition: 'color 0.15s' }}
-            onMouseOver={e => e.currentTarget.style.color = '#aaa'}
-            onMouseOut={e => e.currentTarget.style.color = '#555'}
+            title="Geçmiş"
+            style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', color: '#555' }}
           >
             <Clock size={18} />
           </div>
         )}
-
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* Toggle button */}
-        <div
-          onClick={() => setSideOpen(!sideOpen)}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: sideOpen ? 'flex-end' : 'center',
-            padding: sideOpen ? '8px 16px' : '8px 0',
-            cursor: 'pointer', color: '#555', transition: 'all 0.15s',
-          }}
-          onMouseOver={e => e.currentTarget.style.color = '#aaa'}
-          onMouseOut={e => e.currentTarget.style.color = '#555'}
-          title={sideOpen ? 'Daralt' : 'Genişlet'}
-        >
-          {sideOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-        </div>
       </aside>
 
       {/* ======================================== */}
