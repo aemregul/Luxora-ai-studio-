@@ -93,9 +93,12 @@ export async function POST(request: NextRequest) {
           console.log("✅ FLUX Fill başarılı!");
         } catch (err) {
           console.error("❌ FLUX Fill hatası:", err);
-          throw new Error("Değiştirme işlemi başarısız. Lütfen tekrar deneyin.");
         }
       }
+    }
+
+    if (!resultUrl) {
+      throw new Error("Hiçbir model düzenleme yapamadı. Farklı bir alan seçmeyi veya fırçayı büyütmeyi deneyin.");
     }
 
     console.log("=== INPAINT TAMAMLANDI ===");
@@ -109,51 +112,86 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Model 1: Nano Banana Pro Inpaint
+// Model: Nano Banana Pro Edit (uses edit endpoint with mask info in prompt)
 async function inpaintWithNanoBananaPro(imageUrl: string, maskUrl: string, prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/inpaint", {
+  // Try inpaint endpoint first
+  try {
+    const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/inpaint", {
+      method: "POST",
+      headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        image_url: imageUrl,
+        mask_url: maskUrl,
+        num_images: 1,
+        output_format: "png",
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.images?.[0]?.url) return data.images[0].url;
+    }
+    console.log("Inpaint endpoint failed, trying edit endpoint...");
+  } catch {}
+
+  // Fallback to edit endpoint
+  const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/edit", {
     method: "POST",
     headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      prompt,
-      image_url: imageUrl,
-      mask_url: maskUrl,
+      prompt: `Using the mask, ${prompt}`,
+      image_urls: [imageUrl, maskUrl],
       num_images: 1,
       output_format: "png",
     }),
   });
-  if (!res.ok) throw new Error(`Nano Banana Pro Inpaint: ${res.status} - ${await res.text()}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("Nano Banana Pro error response:", errText);
+    throw new Error(`Nano Banana Pro: ${res.status}`);
+  }
   const data = await res.json();
   if (data.images?.[0]?.url) return data.images[0].url;
   throw new Error("No images");
 }
 
-// Model 2: FLUX Fill Pro
+// Model: FLUX Fill Pro (v1)
 async function inpaintWithFluxFill(imageUrl: string, maskUrl: string, prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch("https://fal.run/fal-ai/flux-pro/v1.1/fill", {
+  const res = await fetch("https://fal.run/fal-ai/flux-pro/v1/fill", {
     method: "POST",
     headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
       image_url: imageUrl,
       mask_url: maskUrl,
-      output_format: "png",
     }),
   });
-  if (!res.ok) throw new Error(`FLUX Fill: ${res.status} - ${await res.text()}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("FLUX Fill error response:", errText);
+    throw new Error(`FLUX Fill: ${res.status}`);
+  }
   const data = await res.json();
   if (data.images?.[0]?.url) return data.images[0].url;
   throw new Error("No images");
 }
 
-// Model 3: Bria Eraser
+// Model: Bria Eraser (purpose-built for object removal)
 async function inpaintWithBriaEraser(imageUrl: string, maskUrl: string, apiKey: string): Promise<string> {
   const res = await fetch("https://fal.run/fal-ai/bria/eraser", {
     method: "POST",
     headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: imageUrl, mask_url: maskUrl }),
+    body: JSON.stringify({
+      image_url: imageUrl,
+      mask_url: maskUrl,
+      mask_type: "manual",
+    }),
   });
-  if (!res.ok) throw new Error(`Bria Eraser: ${res.status} - ${await res.text()}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("Bria Eraser error response:", errText);
+    throw new Error(`Bria Eraser: ${res.status}`);
+  }
   const data = await res.json();
   if (data.image?.url) return data.image.url;
   throw new Error("No image");
