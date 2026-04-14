@@ -21,7 +21,35 @@ type Project = { id: string; name: string; createdAt: number; history: Result[] 
 
 const LS_KEY = 'luxora_projects';
 const loadProjects = (): Project[] => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : []; } catch { return []; } };
-const saveProjects = (p: Project[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(p)); } catch {} };
+const saveProjects = (p: Project[]) => {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(p));
+  } catch (e) {
+    // If storage full, try removing oldest items
+    console.warn('localStorage save failed, trimming history...', e);
+    const trimmed = p.map(proj => ({ ...proj, history: proj.history.slice(0, 10) }));
+    try { localStorage.setItem(LS_KEY, JSON.stringify(trimmed)); } catch {}
+  }
+};
+
+// Compress image to thumbnail for localStorage
+const toThumb = (src: string, maxSize = 300): Promise<string> => {
+  return new Promise(resolve => {
+    // If it's a URL (not base64), keep as-is
+    if (!src.startsWith('data:')) { resolve(src); return; }
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+      c.width = img.width * scale;
+      c.height = img.height * scale;
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
+};
 
 const ROOMS: Room[] = [
   { id: "salon", label: "Salon", icon: Home },
@@ -148,9 +176,12 @@ export default function LuxoraStudio() {
     setProjects(updated); saveProjects(updated); setRenaming(null);
   };
 
-  const addToHistory = (item: Result) => {
+  const addToHistory = async (item: Result) => {
     if (!projId) return;
-    const updated = projects.map(p => p.id === projId ? { ...p, history: [item, ...p.history].slice(0, 100) } : p);
+    // Compress images for storage
+    const [thumbOrig, thumbRes] = await Promise.all([toThumb(item.orig), toThumb(item.result)]);
+    const storageItem: Result = { ...item, orig: thumbOrig, result: thumbRes };
+    const updated = projects.map(p => p.id === projId ? { ...p, history: [storageItem, ...p.history].slice(0, 50) } : p);
     setProjects(updated); saveProjects(updated);
   };
 
