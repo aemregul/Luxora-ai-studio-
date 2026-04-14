@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { startImage, endImage, prompt, duration, action, requestId } = await request.json();
+    const { startImage, endImage, prompt, duration, action, requestId, model } = await request.json();
+
+    // Model selection: fast (default for walkthrough) or standard
+    const modelEndpoint = model === 'standard' 
+      ? 'bytedance/seedance-2.0/image-to-video'
+      : 'bytedance/seedance-2.0/fast/image-to-video';
 
     const FAL_KEY = process.env.FAL_KEY;
     if (!FAL_KEY) {
@@ -11,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     // === POLL MODE: Check status of existing request ===
     if (action === 'poll' && requestId) {
-      const statusRes = await fetch(`https://queue.fal.run/bytedance/seedance-2.0/image-to-video/requests/${requestId}/status`, {
+      const statusRes = await fetch(`https://queue.fal.run/${modelEndpoint}/requests/${requestId}/status`, {
         headers: { "Authorization": `Key ${FAL_KEY}` },
       });
 
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
 
       if (statusData.status === "COMPLETED") {
         // Fetch result
-        const resultRes = await fetch(`https://queue.fal.run/bytedance/seedance-2.0/image-to-video/requests/${requestId}`, {
+        const resultRes = await fetch(`https://queue.fal.run/${modelEndpoint}/requests/${requestId}`, {
           headers: { "Authorization": `Key ${FAL_KEY}` },
         });
 
@@ -85,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Submit to queue (returns immediately with request_id)
-    const submitRes = await fetch("https://queue.fal.run/bytedance/seedance-2.0/image-to-video", {
+    const submitRes = await fetch(`https://queue.fal.run/${modelEndpoint}`, {
       method: "POST",
       headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),

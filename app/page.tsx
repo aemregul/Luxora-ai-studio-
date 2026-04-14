@@ -451,7 +451,7 @@ export default function LuxoraStudio() {
 
       // Step 2: Poll
       setVideoProgress(10);
-      const videoUrl = await pollForVideo(submitData.requestId, (p) => setVideoProgress(p));
+      const videoUrl = await pollForVideo(submitData.requestId, 'fast', (p) => setVideoProgress(p));
       setVideoProgress(100);
       await new Promise(r => setTimeout(r, 300));
       setVideoResult(videoUrl);
@@ -462,37 +462,36 @@ export default function LuxoraStudio() {
   };
 
   // Shared poll helper
-  const pollForVideo = async (requestId: string, onProgress?: (p: number) => void): Promise<string> => {
+  const pollForVideo = async (requestId: string, model = 'fast', onProgress?: (p: number) => void): Promise<string> => {
     const maxAttempts = 120; // 10 minutes max
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise(r => setTimeout(r, 5000)); // 5s intervals
+      await new Promise(r => setTimeout(r, 4000)); // 4s intervals
       if (onProgress) onProgress(Math.min(10 + (attempt / maxAttempts) * 85, 95));
 
       try {
         const r = await fetch('/api/video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'poll', requestId }),
+          body: JSON.stringify({ action: 'poll', requestId, model }),
         });
         const d = await r.json();
 
         if (d.status === 'completed' && d.videoUrl) return d.videoUrl;
-        if (d.status === 'error') throw new Error(d.error || 'Video ba\u015far\u0131s\u0131z');
-        // processing/polling — continue
+        if (d.status === 'error') throw new Error(d.error || 'Video başarısız');
       } catch (e) {
-        if (e instanceof Error && e.message !== 'Video ba\u015far\u0131s\u0131z') continue;
+        if (e instanceof Error && e.message !== 'Video başarısız') continue;
         throw e;
       }
     }
-    throw new Error('Video zaman a\u015f\u0131m\u0131 (10 dk)');
+    throw new Error('Video zaman aşımı (10 dk)');
   };
 
   // ============ WALKTHROUGH ============
-  const WALK_ROUTE = [0, 1, 3, 4, 8, 5]; // Kap\u0131 \u2192 Sol \u2192 Pencere \u2192 Ters \u2192 Panoramik \u2192 Ku\u015f
+  const WALK_ROUTE = [0, 3, 4, 8]; // Kapı → Pencere → Ters → Panoramik (3 segment = daha hızlı)
 
   const genWalkthrough = async () => {
     const available = WALK_ROUTE.filter(i => gridPanels[i]);
-    if (available.length < 2) { setErr('En az 2 a\u00e7\u0131 paneli gerekli'); return; }
+    if (available.length < 2) { setErr('En az 2 açı paneli gerekli'); return; }
 
     setWalkBusy(true); setWalkProgress(0); setWalkSegments([]); setWalkCurrent(0); setErr(null);
     const segments: string[] = [];
@@ -503,7 +502,7 @@ export default function LuxoraStudio() {
       const endPanel = gridPanels[available[i + 1]]!;
 
       try {
-        // Submit segment
+        // Submit segment (use fast model)
         const submitRes = await fetch('/api/video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -512,6 +511,7 @@ export default function LuxoraStudio() {
             endImage: endPanel,
             prompt: 'Smooth cinematic camera transition between two angles of the same room, slow dolly movement, professional architectural videography',
             duration: 5,
+            model: 'fast',
           }),
         });
         if (!submitRes.ok) continue;
@@ -520,7 +520,7 @@ export default function LuxoraStudio() {
 
         // Poll for this segment
         setWalkProgress(Math.round(((i + 0.3) / totalPairs) * 100));
-        const videoUrl = await pollForVideo(submitData.requestId);
+        const videoUrl = await pollForVideo(submitData.requestId, 'fast');
         segments.push(videoUrl);
         setWalkSegments([...segments]);
         setWalkProgress(Math.round(((i + 1) / totalPairs) * 100));
