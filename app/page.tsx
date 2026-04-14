@@ -351,6 +351,20 @@ export default function LuxoraStudio() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: '#ccc' }}>Sonuç</h3>
               <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => setLightbox(img)}
+                  title="Orijinali görüntüle"
+                  style={{ height: 32, padding: '0 10px', borderRadius: 8, backgroundColor: 'var(--bg-3)', border: '1px solid var(--bdr)', color: '#888', fontSize: 11, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'all 0.15s' }}
+                >
+                  <Eye size={12} />Öncesi
+                </button>
+                <button
+                  onClick={() => setLightbox(res)}
+                  title="Sonucu görüntüle"
+                  style={{ height: 32, padding: '0 10px', borderRadius: 8, backgroundColor: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)', color: '#d4a537', fontSize: 11, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'all 0.15s' }}
+                >
+                  <Eye size={12} />Sonrası
+                </button>
                 <button onClick={dl} style={{ height: 32, padding: '0 14px', borderRadius: 8, backgroundColor: 'var(--bg-3)', border: '1px solid var(--bdr)', color: '#aaa', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s' }}>
                   <Download size={12} />İndir
                 </button>
@@ -364,6 +378,8 @@ export default function LuxoraStudio() {
               ref={cmpRef} className="cmp"
               onMouseDown={e => { setSliding(true); moveS(e.clientX); }}
               onTouchStart={e => { setSliding(true); moveS(e.touches[0].clientX); }}
+              onDoubleClick={() => setLightbox(res)}
+              title="Çift tıklayarak büyüt"
             >
               <img src={res} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
               <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', width: `${pos}%` }}>
@@ -376,10 +392,13 @@ export default function LuxoraStudio() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 11, color: '#555' }}>
-              <span>{ROOMS.find(r => r.id === room)?.label}</span>
-              <span style={{ opacity: 0.4 }}>·</span>
-              <span>{STYLES.find(s => s.id === style)?.label}</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#555' }}>
+                <span>{ROOMS.find(r => r.id === room)?.label}</span>
+                <span style={{ opacity: 0.4 }}>·</span>
+                <span>{STYLES.find(s => s.id === style)?.label}</span>
+              </div>
+              <span style={{ fontSize: 10, color: '#444' }}>Çift tıkla: tam ekran</span>
             </div>
           </div>
         )}
