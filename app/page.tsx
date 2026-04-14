@@ -91,6 +91,7 @@ export default function LuxoraStudio() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
+  const sideTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => setOk(true), []);
 
@@ -157,7 +158,7 @@ export default function LuxoraStudio() {
   // RENDER
   // ============================================
   return (
-    <div style={{ display: 'grid', gridTemplateRows: '56px 1fr', gridTemplateColumns: `${sideOpen ? 260 : 60}px 1fr 260px`, height: '100vh', overflow: 'hidden', transition: 'grid-template-columns 0.2s ease' }}>
+    <div style={{ display: 'grid', gridTemplateRows: '56px 1fr', gridTemplateColumns: `${sideOpen ? 260 : 60}px 1fr 260px`, height: '100vh', overflow: 'hidden', transition: 'grid-template-columns 0.25s cubic-bezier(0.4, 0, 0.2, 1)' }}>
 
       {/* ======================================== */}
       {/* HEADER                                    */}
@@ -182,9 +183,9 @@ export default function LuxoraStudio() {
       {/* LEFT SIDEBAR                              */}
       {/* ======================================== */}
       <aside
-        onMouseEnter={() => setSideOpen(true)}
-        onMouseLeave={() => setSideOpen(false)}
-        style={{ overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0', display: 'flex', flexDirection: 'column' as const, transition: 'width 0.2s ease' }}
+        onMouseEnter={() => { if (sideTimer.current) { clearTimeout(sideTimer.current); sideTimer.current = null; } setSideOpen(true); }}
+        onMouseLeave={() => { sideTimer.current = setTimeout(() => setSideOpen(false), 300); }}
+        style={{ overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0', display: 'flex', flexDirection: 'column' as const, transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)' }}
       >
         {/* Tools */}
         {sideOpen && (
