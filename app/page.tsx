@@ -8,6 +8,7 @@ import {
   RotateCcw, Compass, Crown, Ship, Paintbrush, Grid3x3,
   Film, ChevronRight, ChevronLeft, Clock, Eye, Settings2, Wand2, Layers,
   PanelLeftClose, PanelLeftOpen, FolderOpen, ChevronDown, Pencil, Eraser, Minus,
+  Play, ImagePlus,
 } from "lucide-react";
 
 // ============================================
@@ -139,6 +140,17 @@ export default function LuxoraStudio() {
   const [gridBusy, setGridBusy] = useState(false);
   const [gridProgress, setGridProgress] = useState(0);
   const [gridDone, setGridDone] = useState(false);
+
+  // Video state
+  const [videoStartImg, setVideoStartImg] = useState<string | null>(null);
+  const [videoEndImg, setVideoEndImg] = useState<string | null>(null);
+  const [videoDuration, setVideoDuration] = useState(5);
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoResult, setVideoResult] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const startFileRef = useRef<HTMLInputElement>(null);
+  const endFileRef = useRef<HTMLInputElement>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
@@ -397,6 +409,51 @@ export default function LuxoraStudio() {
       await Promise.all(batchPromises);
     }
     setGridBusy(false); setGridDone(true);
+  };
+
+  // ============ VIDEO ============
+  const onVideoFile = (f: File, type: 'start' | 'end') => {
+    if (!f.type.startsWith('image/')) return;
+    const r = new FileReader();
+    r.onload = () => {
+      if (type === 'start') setVideoStartImg(r.result as string);
+      else setVideoEndImg(r.result as string);
+    };
+    r.readAsDataURL(f);
+  };
+
+  const genVideo = async () => {
+    if (!videoStartImg) return;
+    setVideoBusy(true); setVideoProgress(0); setVideoResult(null); setErr(null);
+
+    // Fake progress (video takes long)
+    const iv = setInterval(() => {
+      setVideoProgress(p => p < 90 ? p + 0.5 : p);
+    }, 1000);
+
+    try {
+      const r = await fetch('/api/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startImage: videoStartImg,
+          endImage: videoEndImg,
+          prompt: videoPrompt,
+          duration: videoDuration,
+        }),
+      });
+      clearInterval(iv);
+      if (!r.ok) throw new Error((await r.json()).error || 'Hata');
+      const d = await r.json();
+      if (d.success && d.videoUrl) {
+        setVideoProgress(100);
+        await new Promise(r => setTimeout(r, 400));
+        setVideoResult(d.videoUrl);
+      } else throw new Error('Video üretilemedi');
+    } catch (e) {
+      clearInterval(iv); setVideoProgress(0);
+      setErr(e instanceof Error ? e.message : 'Video hatası');
+    } finally { setVideoBusy(false); }
   };
 
   if (!ok) return null;
@@ -856,6 +913,71 @@ export default function LuxoraStudio() {
           </div>
         )}
 
+        {/* === VIDEO RESULT === */}
+        {videoResult && tool === 'video' && (
+          <div className="fade-in" style={{ width: '100%', maxWidth: 720 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Film size={14} color="#d4a537" />
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#ccc' }}>Video Sonucu</span>
+                <span style={{ fontSize: 10, color: '#555' }}>{videoDuration}s</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <a
+                  href={videoResult}
+                  download={`luxora_video_${Date.now()}.mp4`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    height: 32, padding: '0 12px', borderRadius: 8,
+                    backgroundColor: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)',
+                    color: '#d4a537', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    textDecoration: 'none',
+                  }}
+                >
+                  <Download size={12} />İndir
+                </a>
+              </div>
+            </div>
+
+            <div style={{ borderRadius: 12, overflow: 'hidden', background: '#000' }}>
+              <video
+                src={videoResult}
+                controls
+                autoPlay
+                loop
+                style={{ width: '100%', display: 'block' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button
+                onClick={() => { setVideoResult(null); setVideoStartImg(null); setVideoEndImg(null); }}
+                style={{
+                  flex: 1, height: 36, borderRadius: 10,
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#aaa', fontSize: 12, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                <Upload size={12} />Yeni Video
+              </button>
+              <button
+                onClick={() => { setVideoResult(null); genVideo(); }}
+                style={{
+                  flex: 1, height: 36, borderRadius: 10,
+                  background: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)',
+                  color: '#d4a537', fontSize: 12, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                <RotateCcw size={12} />Tekrar Üret
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* === RESULT: Before/After Comparison === */}
         {res && img && (
           <div className="fade-in" style={{ width: '100%', maxWidth: 720 }}>
@@ -1210,17 +1332,155 @@ export default function LuxoraStudio() {
           </div>
         )}
 
-        {/* === VIDEO TOOL (placeholder) === */}
+        {/* === VIDEO TOOL === */}
         {tool === "video" && (
           <div className="fade-in">
             <div className="panel-section">
               <div className="panel-label">Video Oluşturma</div>
-              <div style={{ padding: 20, textAlign: 'center', color: '#444', fontSize: 12 }}>
-                <Film size={28} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }} />
-                <p>Tasarım görsellerinizden walkthrough video oluşturun.</p>
-                <p style={{ marginTop: 8, fontSize: 11, color: '#333' }}>Yakında aktif olacak</p>
+              <p style={{ fontSize: 11, color: '#555', lineHeight: 1.6, marginBottom: 12 }}>
+                Başlangıç ve bitiş frame yükleyin, Seedance 2.0 ile sinematik walkthrough video oluşturun.
+              </p>
+            </div>
+
+            {/* Start Frame */}
+            <div className="panel-section">
+              <div className="panel-label">Başlangıç Frame <span style={{ color: '#ef4444', fontWeight: 400 }}>*</span></div>
+              <div
+                onClick={() => startFileRef.current?.click()}
+                style={{
+                  height: 80, borderRadius: 10, cursor: 'pointer',
+                  border: '1px dashed ' + (videoStartImg ? 'rgba(212,165,55,0.3)' : 'rgba(255,255,255,0.1)'),
+                  background: videoStartImg ? 'transparent' : 'rgba(255,255,255,0.02)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden', position: 'relative',
+                }}
+              >
+                {videoStartImg ? (
+                  <>
+                    <img src={videoStartImg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      onClick={e => { e.stopPropagation(); setVideoStartImg(null); }}
+                      style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 4, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    ><X size={10} /></button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <ImagePlus size={18} color="#444" style={{ margin: '0 auto 4px' }} />
+                    <p style={{ fontSize: 10, color: '#444' }}>Başlangıç görseli yükle</p>
+                  </div>
+                )}
+              </div>
+              <input ref={startFileRef} type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && onVideoFile(e.target.files[0], 'start')} />
+            </div>
+
+            {/* End Frame */}
+            <div className="panel-section">
+              <div className="panel-label">Bitiş Frame <span style={{ textTransform: 'none', letterSpacing: 'normal', opacity: 0.5, fontWeight: 400 }}>(opsiyonel)</span></div>
+              <div
+                onClick={() => endFileRef.current?.click()}
+                style={{
+                  height: 80, borderRadius: 10, cursor: 'pointer',
+                  border: '1px dashed ' + (videoEndImg ? 'rgba(212,165,55,0.3)' : 'rgba(255,255,255,0.08)'),
+                  background: videoEndImg ? 'transparent' : 'rgba(255,255,255,0.02)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden', position: 'relative',
+                }}
+              >
+                {videoEndImg ? (
+                  <>
+                    <img src={videoEndImg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      onClick={e => { e.stopPropagation(); setVideoEndImg(null); }}
+                      style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 4, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    ><X size={10} /></button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <ImagePlus size={16} color="#333" style={{ margin: '0 auto 4px' }} />
+                    <p style={{ fontSize: 10, color: '#333' }}>Bitiş görseli (opsiyonel)</p>
+                  </div>
+                )}
+              </div>
+              <input ref={endFileRef} type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && onVideoFile(e.target.files[0], 'end')} />
+            </div>
+
+            {/* Duration Slider */}
+            <div className="panel-section">
+              <div className="panel-label">Video Süresi</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 10, color: '#555' }}>5s</span>
+                <input
+                  type="range"
+                  min="5" max="15" value={videoDuration}
+                  onChange={e => setVideoDuration(Number(e.target.value))}
+                  style={{ flex: 1, accentColor: '#d4a537' }}
+                />
+                <span style={{ fontSize: 10, color: '#555' }}>15s</span>
+                <span style={{ fontSize: 12, color: '#d4a537', fontWeight: 600, minWidth: 28, textAlign: 'right' }}>{videoDuration}s</span>
               </div>
             </div>
+
+            {/* Video Prompt */}
+            <div className="panel-section">
+              <div className="panel-label">Hareket Tanımı <span style={{ textTransform: 'none', letterSpacing: 'normal', opacity: 0.5, fontWeight: 400 }}>(opsiyonel)</span></div>
+              <textarea
+                value={videoPrompt}
+                onChange={e => setVideoPrompt(e.target.value.slice(0, 300))}
+                placeholder="Örn: Yavaş kamera hareketi ile odada dolaş..."
+                rows={2}
+                style={{
+                  width: '100%', padding: '10px 12px',
+                  backgroundColor: 'var(--bg-2)', color: '#fff',
+                  fontSize: 12, lineHeight: 1.5, borderRadius: 10,
+                  border: '1px solid var(--bdr)', outline: 'none',
+                  resize: 'none', transition: 'border-color 0.15s',
+                }}
+                onFocus={e => e.target.style.borderColor = 'rgba(212,165,55,0.2)'}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.06)'}
+              />
+            </div>
+
+            {/* Quick prompts */}
+            <div className="panel-section">
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
+                {['Yavaş dolly', 'Pan sağa', 'İleri yürü', 'Zoom in', 'Orbit dönüş'].map(q => (
+                  <button
+                    key={q}
+                    onClick={() => setVideoPrompt(q)}
+                    style={{
+                      height: 26, padding: '0 8px', borderRadius: 6,
+                      background: videoPrompt === q ? 'rgba(212,165,55,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: '1px solid ' + (videoPrompt === q ? 'rgba(212,165,55,0.3)' : 'rgba(255,255,255,0.06)'),
+                      color: videoPrompt === q ? '#d4a537' : '#555',
+                      fontSize: 10, cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Progress */}
+            {videoBusy && (
+              <div className="panel-section">
+                <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${videoProgress}%`, background: '#d4a537', borderRadius: 2, transition: 'width 0.5s' }} />
+                </div>
+                <p style={{ fontSize: 10, color: '#888', marginTop: 6, textAlign: 'center' }}>
+                  Video oluşturuluyor... ({Math.round(videoProgress)}%)
+                </p>
+              </div>
+            )}
+
+            {/* Generate */}
+            <button
+              onClick={genVideo}
+              disabled={!videoStartImg || videoBusy}
+              className={`btn-generate ${!videoStartImg || videoBusy ? 'disabled' : 'ready'}`}
+            >
+              {videoBusy ? <><Loader2 size={16} className="animate-spin" />Oluşturuluyor...</> : <><Play size={16} />Video Oluştur</>}
+            </button>
           </div>
         )}
       </aside>
