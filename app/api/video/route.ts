@@ -2,21 +2,60 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { startImage, endImage, prompt, duration } = await request.json();
-
-    if (!startImage) {
-      return NextResponse.json({ error: 'Başlangıç görseli gereklidir' }, { status: 400 });
-    }
+    const { startImage, endImage, prompt, duration, action, requestId } = await request.json();
 
     const FAL_KEY = process.env.FAL_KEY;
     if (!FAL_KEY) {
       return NextResponse.json({ error: 'FAL API anahtarı yapılandırılmamış' }, { status: 500 });
     }
 
-    console.log("=== LUXORA VIDEO ===");
-    console.log("Duration:", duration || "auto");
+    // === POLL MODE: Check status of existing request ===
+    if (action === 'poll' && requestId) {
+      const statusRes = await fetch(`https://queue.fal.run/bytedance/seedance-2.0/image-to-video/requests/${requestId}/status`, {
+        headers: { "Authorization": `Key ${FAL_KEY}` },
+      });
+
+      if (!statusRes.ok) {
+        return NextResponse.json({ status: 'polling', message: 'Durum kontrol ediliyor...' });
+      }
+
+      const statusData = await statusRes.json();
+
+      if (statusData.status === "COMPLETED") {
+        // Fetch result
+        const resultRes = await fetch(`https://queue.fal.run/bytedance/seedance-2.0/image-to-video/requests/${requestId}`, {
+          headers: { "Authorization": `Key ${FAL_KEY}` },
+        });
+
+        if (!resultRes.ok) return NextResponse.json({ status: 'error', error: 'Sonuç alınamadı' });
+        const resultData = await resultRes.json();
+
+        if (resultData.video?.url) {
+          return NextResponse.json({ status: 'completed', videoUrl: resultData.video.url });
+        }
+        return NextResponse.json({ status: 'error', error: 'Video URL bulunamadı' });
+      }
+
+      if (statusData.status === "FAILED") {
+        return NextResponse.json({ status: 'error', error: 'Video üretimi başarısız' });
+      }
+
+      // IN_QUEUE or IN_PROGRESS
+      return NextResponse.json({ 
+        status: 'processing', 
+        queueStatus: statusData.status,
+        position: statusData.queue_position,
+      });
+    }
+
+    // === SUBMIT MODE: Start new video generation ===
+    if (!startImage) {
+      return NextResponse.json({ error: 'Başlangıç görseli gereklidir' }, { status: 400 });
+    }
+
+    console.log("=== LUXORA VIDEO SUBMIT ===");
+    console.log("Duration:", duration || 5);
     console.log("Has end frame:", !!endImage);
-    console.log("Prompt:", prompt || "(default)");
 
     // Upload images to CDN
     let startUrl = startImage;
@@ -33,7 +72,6 @@ export async function POST(request: NextRequest) {
       ? prompt.trim()
       : "Slow cinematic camera movement through an elegant interior space, smooth dolly shot, gentle panning, professional architectural videography, ambient lighting";
 
-    // Build request body
     const body: Record<string, unknown> = {
       prompt: videoPrompt,
       image_url: startUrl,
@@ -46,9 +84,7 @@ export async function POST(request: NextRequest) {
       body.end_image_url = endUrl;
     }
 
-    console.log("Calling Seedance 2.0...");
-
-    // Submit to queue (video generation is long-running)
+    // Submit to queue (returns immediately with request_id)
     const submitRes = await fetch("https://queue.fal.run/bytedance/seedance-2.0/image-to-video", {
       method: "POST",
       headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
@@ -62,49 +98,13 @@ export async function POST(request: NextRequest) {
     }
 
     const { request_id } = await submitRes.json();
-    console.log("Queue request_id:", request_id);
+    console.log("✅ Queue request_id:", request_id);
 
-    // Poll for result (max 5 minutes)
-    const maxWait = 300_000;
-    const pollInterval = 5_000;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < maxWait) {
-      await new Promise(r => setTimeout(r, pollInterval));
-
-      const statusRes = await fetch(`https://queue.fal.run/bytedance/seedance-2.0/image-to-video/requests/${request_id}/status`, {
-        headers: { "Authorization": `Key ${FAL_KEY}` },
-      });
-
-      if (!statusRes.ok) continue;
-      const statusData = await statusRes.json();
-
-      if (statusData.status === "COMPLETED") {
-        // Fetch result
-        const resultRes = await fetch(`https://queue.fal.run/bytedance/seedance-2.0/image-to-video/requests/${request_id}`, {
-          headers: { "Authorization": `Key ${FAL_KEY}` },
-        });
-
-        if (!resultRes.ok) throw new Error("Sonuç alınamadı");
-        const resultData = await resultRes.json();
-
-        if (resultData.video?.url) {
-          console.log("✅ Video başarılı:", resultData.video.url);
-          return NextResponse.json({ success: true, videoUrl: resultData.video.url });
-        }
-        throw new Error("Video URL bulunamadı");
-      }
-
-      if (statusData.status === "FAILED") {
-        throw new Error("Video üretimi başarısız");
-      }
-
-      // IN_QUEUE or IN_PROGRESS — keep polling
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      console.log(`Polling... ${elapsed}s elapsed, status: ${statusData.status}`);
-    }
-
-    throw new Error("Video üretimi zaman aşımına uğradı (5 dakika)");
+    return NextResponse.json({ 
+      success: true, 
+      requestId: request_id,
+      status: 'submitted',
+    });
 
   } catch (error) {
     console.error('Video error:', error);

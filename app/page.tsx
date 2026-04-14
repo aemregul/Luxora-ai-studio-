@@ -433,13 +433,9 @@ export default function LuxoraStudio() {
     if (!videoStartImg) return;
     setVideoBusy(true); setVideoProgress(0); setVideoResult(null); setErr(null);
 
-    // Fake progress (video takes long)
-    const iv = setInterval(() => {
-      setVideoProgress(p => p < 90 ? p + 0.5 : p);
-    }, 1000);
-
     try {
-      const r = await fetch('/api/video', {
+      // Step 1: Submit
+      const submitRes = await fetch('/api/video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -449,26 +445,54 @@ export default function LuxoraStudio() {
           duration: videoDuration,
         }),
       });
-      clearInterval(iv);
-      if (!r.ok) throw new Error((await r.json()).error || 'Hata');
-      const d = await r.json();
-      if (d.success && d.videoUrl) {
-        setVideoProgress(100);
-        await new Promise(r => setTimeout(r, 400));
-        setVideoResult(d.videoUrl);
-      } else throw new Error('Video üretilemedi');
+      if (!submitRes.ok) throw new Error((await submitRes.json()).error || 'Hata');
+      const submitData = await submitRes.json();
+      if (!submitData.requestId) throw new Error('Request ID al\u0131namad\u0131');
+
+      // Step 2: Poll
+      setVideoProgress(10);
+      const videoUrl = await pollForVideo(submitData.requestId, (p) => setVideoProgress(p));
+      setVideoProgress(100);
+      await new Promise(r => setTimeout(r, 300));
+      setVideoResult(videoUrl);
     } catch (e) {
-      clearInterval(iv); setVideoProgress(0);
-      setErr(e instanceof Error ? e.message : 'Video hatası');
+      setVideoProgress(0);
+      setErr(e instanceof Error ? e.message : 'Video hatas\u0131');
     } finally { setVideoBusy(false); }
   };
 
+  // Shared poll helper
+  const pollForVideo = async (requestId: string, onProgress?: (p: number) => void): Promise<string> => {
+    const maxAttempts = 120; // 10 minutes max
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(r => setTimeout(r, 5000)); // 5s intervals
+      if (onProgress) onProgress(Math.min(10 + (attempt / maxAttempts) * 85, 95));
+
+      try {
+        const r = await fetch('/api/video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'poll', requestId }),
+        });
+        const d = await r.json();
+
+        if (d.status === 'completed' && d.videoUrl) return d.videoUrl;
+        if (d.status === 'error') throw new Error(d.error || 'Video ba\u015far\u0131s\u0131z');
+        // processing/polling — continue
+      } catch (e) {
+        if (e instanceof Error && e.message !== 'Video ba\u015far\u0131s\u0131z') continue;
+        throw e;
+      }
+    }
+    throw new Error('Video zaman a\u015f\u0131m\u0131 (10 dk)');
+  };
+
   // ============ WALKTHROUGH ============
-  const WALK_ROUTE = [0, 1, 3, 4, 8, 5]; // Kapı → Sol → Pencere → Ters → Panoramik → Kuş
+  const WALK_ROUTE = [0, 1, 3, 4, 8, 5]; // Kap\u0131 \u2192 Sol \u2192 Pencere \u2192 Ters \u2192 Panoramik \u2192 Ku\u015f
 
   const genWalkthrough = async () => {
     const available = WALK_ROUTE.filter(i => gridPanels[i]);
-    if (available.length < 2) { setErr('En az 2 açı paneli gerekli'); return; }
+    if (available.length < 2) { setErr('En az 2 a\u00e7\u0131 paneli gerekli'); return; }
 
     setWalkBusy(true); setWalkProgress(0); setWalkSegments([]); setWalkCurrent(0); setErr(null);
     const segments: string[] = [];
@@ -477,10 +501,10 @@ export default function LuxoraStudio() {
     for (let i = 0; i < totalPairs; i++) {
       const startPanel = gridPanels[available[i]]!;
       const endPanel = gridPanels[available[i + 1]]!;
-      setWalkProgress(Math.round((i / totalPairs) * 100));
 
       try {
-        const r = await fetch('/api/video', {
+        // Submit segment
+        const submitRes = await fetch('/api/video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -490,13 +514,16 @@ export default function LuxoraStudio() {
             duration: 5,
           }),
         });
-        if (r.ok) {
-          const d = await r.json();
-          if (d.success && d.videoUrl) {
-            segments.push(d.videoUrl);
-            setWalkSegments([...segments]);
-          }
-        }
+        if (!submitRes.ok) continue;
+        const submitData = await submitRes.json();
+        if (!submitData.requestId) continue;
+
+        // Poll for this segment
+        setWalkProgress(Math.round(((i + 0.3) / totalPairs) * 100));
+        const videoUrl = await pollForVideo(submitData.requestId);
+        segments.push(videoUrl);
+        setWalkSegments([...segments]);
+        setWalkProgress(Math.round(((i + 1) / totalPairs) * 100));
       } catch {}
     }
 
