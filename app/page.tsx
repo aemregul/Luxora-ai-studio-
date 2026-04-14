@@ -134,6 +134,12 @@ export default function LuxoraStudio() {
   const isPainting = useRef(false);
   const lastPoint = useRef<{x: number, y: number} | null>(null);
 
+  // Grid state
+  const [gridPanels, setGridPanels] = useState<(string | null)[]>(Array(9).fill(null));
+  const [gridBusy, setGridBusy] = useState(false);
+  const [gridProgress, setGridProgress] = useState(0);
+  const [gridDone, setGridDone] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
   const sideTimer = useRef<NodeJS.Timeout | null>(null);
@@ -358,6 +364,39 @@ export default function LuxoraStudio() {
       } else throw new Error('Üretilemedi');
     } catch (e) { done = true; if (iv) clearInterval(iv); setProg(0); setErr(e instanceof Error ? e.message : 'Hata'); }
     finally { setBusy(false); }
+  };
+
+  // ============ GRID ============
+  const genGrid = async () => {
+    if (!img) return;
+    setGridBusy(true); setGridDone(false); setGridProgress(0); setErr(null);
+    setGridPanels(Array(9).fill(null));
+    const roomLabel = ROOMS.find(r => r.id === room)?.label || room;
+    const styleLabel = STYLES.find(s => s.id === style)?.label || style;
+
+    let completed = 0;
+    // Generate 9 panels in batches of 3
+    for (let batch = 0; batch < 3; batch++) {
+      const batchPromises = [0, 1, 2].map(i => {
+        const idx = batch * 3 + i;
+        return fetch('/api/grid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: img, panelIndex: idx, roomType: roomLabel, designStyle: styleLabel }),
+        })
+          .then(r => r.json())
+          .then(d => {
+            if (d.success && d.imageUrl) {
+              setGridPanels(prev => { const n = [...prev]; n[idx] = d.imageUrl; return n; });
+            }
+            completed++;
+            setGridProgress(Math.round((completed / 9) * 100));
+          })
+          .catch(() => { completed++; setGridProgress(Math.round((completed / 9) * 100)); });
+      });
+      await Promise.all(batchPromises);
+    }
+    setGridBusy(false); setGridDone(true);
   };
 
   if (!ok) return null;
@@ -639,7 +678,7 @@ export default function LuxoraStudio() {
         )}
 
         {/* === HAS IMAGE: Show it (Redesign mode) === */}
-        {img && !res && tool === 'redesign' && (
+        {img && !res && (tool === 'redesign' || (tool === 'grid' && !gridPanels.some(p => p !== null))) && (
           <div className="canvas-image fade-in" style={{ position: 'relative' }}>
             <img src={img} alt="" style={{ maxHeight: '70vh', objectFit: 'contain' }} />
 
@@ -733,6 +772,87 @@ export default function LuxoraStudio() {
             <p style={{ fontSize: 10, color: '#444', marginTop: 8, textAlign: 'center' }}>
               Beyaz alanlar düzenlenecek · Siyah alanlar korunacak
             </p>
+          </div>
+        )}
+
+        {/* === GRID RESULTS === */}
+        {tool === 'grid' && img && gridPanels.some(p => p !== null) && (
+          <div className="fade-in" style={{ width: '100%', maxWidth: 800 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Grid3x3 size={14} color="#d4a537" />
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#ccc' }}>Çoklu Açı Sonuçları</span>
+                <span style={{ fontSize: 10, color: '#555' }}>({gridPanels.filter(Boolean).length}/9)</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {gridPanels.map((panel, i) => (
+                <div
+                  key={i}
+                  onClick={() => panel && setLightbox(panel)}
+                  style={{
+                    aspectRatio: '16/10', borderRadius: 8, overflow: 'hidden',
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                    cursor: panel ? 'zoom-in' : 'default',
+                    position: 'relative', transition: 'border-color 0.15s',
+                  }}
+                  onMouseOver={e => { if (panel) e.currentTarget.style.borderColor = 'rgba(212,165,55,0.3)'; }}
+                  onMouseOut={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
+                >
+                  {panel ? (
+                    <img src={panel} alt={`Açı ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {gridBusy ? (
+                        <Loader2 size={16} color="#333" className="animate-spin" />
+                      ) : (
+                        <span style={{ fontSize: 10, color: '#333' }}>{i + 1}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Label */}
+                  {panel && (
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0,
+                      padding: '8px 6px 4px', fontSize: 9, color: '#ccc',
+                      background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                      textAlign: 'center',
+                    }}>
+                      {['Kapıdan', 'Sol Duvar', 'Sağ Duvar', 'Pencere', 'Karşı', 'Kuş Bakışı', 'Alçak Açı', 'Detay', '3/4 Açı'][i]}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Action buttons */}
+            {gridDone && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  onClick={() => { setImg(null); setGridPanels(Array(9).fill(null)); setGridDone(false); }}
+                  style={{
+                    flex: 1, height: 36, borderRadius: 10,
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#aaa', fontSize: 12, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <Upload size={12} />Yeni Görsel
+                </button>
+                <button
+                  onClick={genGrid}
+                  style={{
+                    flex: 1, height: 36, borderRadius: 10,
+                    background: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)',
+                    color: '#d4a537', fontSize: 12, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <RotateCcw size={12} />Tekrar Üret
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1026,17 +1146,67 @@ export default function LuxoraStudio() {
           </div>
         )}
 
-        {/* === GRID TOOL (placeholder) === */}
+        {/* === GRID TOOL === */}
         {tool === "grid" && (
           <div className="fade-in">
             <div className="panel-section">
               <div className="panel-label">Çoklu Açı Üretme</div>
-              <div style={{ padding: 20, textAlign: 'center', color: '#444', fontSize: 12 }}>
-                <Grid3x3 size={28} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }} />
-                <p>Oda görselinden 9 farklı kamera açısı üretin.</p>
-                <p style={{ marginTop: 8, fontSize: 11, color: '#333' }}>Yakında aktif olacak</p>
+              <p style={{ fontSize: 11, color: '#555', lineHeight: 1.6, marginBottom: 12 }}>
+                Yüklediğiniz oda fotoğrafından 9 farklı kamera açısı üretin. Her panel aynı odayı farklı perspektiften gösterir.
+              </p>
+            </div>
+
+            {/* Grid info */}
+            <div className="panel-section">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                {['Kapıdan', 'Sol', 'Sağ', 'Pencere', 'Karşı', 'Kuş Bakışı', 'Alçak', 'Detay', '3/4 Açı'].map((label, i) => (
+                  <div key={i} style={{
+                    fontSize: 9, textAlign: 'center', padding: '6px 2px',
+                    borderRadius: 6, background: gridPanels[i] ? 'rgba(212,165,55,0.08)' : 'rgba(255,255,255,0.02)',
+                    border: '1px solid ' + (gridPanels[i] ? 'rgba(212,165,55,0.2)' : 'rgba(255,255,255,0.04)'),
+                    color: gridPanels[i] ? '#d4a537' : '#444',
+                  }}>
+                    {label}
+                  </div>
+                ))}
               </div>
             </div>
+
+            {/* Progress */}
+            {gridBusy && (
+              <div className="panel-section">
+                <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${gridProgress}%`, background: '#d4a537', borderRadius: 2, transition: 'width 0.3s' }} />
+                </div>
+                <p style={{ fontSize: 10, color: '#888', marginTop: 6, textAlign: 'center' }}>
+                  {gridProgress}% — {Math.round(gridProgress / 100 * 9)}/9 panel
+                </p>
+              </div>
+            )}
+
+            {/* Generate */}
+            <button
+              onClick={genGrid}
+              disabled={!img || gridBusy}
+              className={`btn-generate ${!img || gridBusy ? 'disabled' : 'ready'}`}
+            >
+              {gridBusy ? <><Loader2 size={16} className="animate-spin" />Üretiliyor ({gridProgress}%)...</> : <><Grid3x3 size={16} />9 Açı Üret</>}
+            </button>
+
+            {/* Reset */}
+            {gridDone && (
+              <button
+                onClick={() => { setGridPanels(Array(9).fill(null)); setGridDone(false); }}
+                style={{
+                  width: '100%', height: 36, marginTop: 8, borderRadius: 10,
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#888', fontSize: 12, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                <RotateCcw size={12} />Yeniden Üret
+              </button>
+            )}
           </div>
         )}
 
