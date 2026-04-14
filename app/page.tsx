@@ -7,7 +7,7 @@ import {
   Flower2, Armchair, Sparkles, Info, Box, Plus, ExternalLink,
   RotateCcw, Compass, Crown, Ship, Paintbrush, Grid3x3,
   Film, ChevronRight, ChevronLeft, Clock, Eye, Settings2, Wand2, Layers,
-  PanelLeftClose, PanelLeftOpen, FolderOpen, ChevronDown, Pencil,
+  PanelLeftClose, PanelLeftOpen, FolderOpen, ChevronDown, Pencil, Eraser, Minus,
 } from "lucide-react";
 
 // ============================================
@@ -125,6 +125,14 @@ export default function LuxoraStudio() {
   const [projMenu, setProjMenu] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
+
+  // Inpaint state
+  const [brushSize, setBrushSize] = useState(30);
+  const [inpaintPrompt, setInpaintPrompt] = useState('');
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+  const paintContainerRef = useRef<HTMLDivElement>(null);
+  const isPainting = useRef(false);
+  const lastPoint = useRef<{x: number, y: number} | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
@@ -247,6 +255,109 @@ export default function LuxoraStudio() {
     if (!res) return;
     if (res.startsWith("data:")) { const a = document.createElement("a"); a.href = res; a.download = `luxora_${Date.now()}.png`; a.click(); return; }
     try { const r = await fetch(`/api/download?url=${encodeURIComponent(res)}`); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = `luxora_${Date.now()}.png`; a.click(); URL.revokeObjectURL(u); } catch { window.open(res, "_blank"); }
+  };
+
+  // ============ INPAINT ============
+  const initMaskCanvas = useCallback(() => {
+    const canvas = maskCanvasRef.current;
+    const container = paintContainerRef.current;
+    if (!canvas || !container) return;
+    const imgEl = container.querySelector('img');
+    if (!imgEl) return;
+    canvas.width = imgEl.naturalWidth;
+    canvas.height = imgEl.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  const getCanvasPoint = (e: React.MouseEvent) => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+
+  const drawBrush = (x: number, y: number) => {
+    const ctx = maskCanvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const canvas = maskCanvasRef.current!;
+    const scale = canvas.width / (paintContainerRef.current?.getBoundingClientRect().width || canvas.width);
+    const size = brushSize * scale;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Draw line from last point for smooth strokes
+    if (lastPoint.current) {
+      ctx.lineWidth = size;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(lastPoint.current.x, lastPoint.current.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    lastPoint.current = { x, y };
+  };
+
+  const startPaint = (e: React.MouseEvent) => {
+    isPainting.current = true;
+    lastPoint.current = null;
+    const pt = getCanvasPoint(e);
+    if (pt) drawBrush(pt.x, pt.y);
+  };
+
+  const movePaint = (e: React.MouseEvent) => {
+    if (!isPainting.current) return;
+    const pt = getCanvasPoint(e);
+    if (pt) drawBrush(pt.x, pt.y);
+  };
+
+  const stopPaint = () => {
+    isPainting.current = false;
+    lastPoint.current = null;
+  };
+
+  const clearMask = () => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  };
+
+  const getMaskDataURL = () => {
+    return maskCanvasRef.current?.toDataURL('image/png') || null;
+  };
+
+  const genInpaint = async () => {
+    if (!img) return;
+    const mask = getMaskDataURL();
+    if (!mask) { setErr('Düzenlenecek alanı seçin'); return; }
+    setBusy(true); setProg(0); setStat('Maske hazırlanıyor...'); setErr(null); setRes(null);
+    let iv: NodeJS.Timeout | null = null; let done = false;
+    iv = setInterval(() => { if (done) { if (iv) clearInterval(iv); return; } setProg(p => { if (p < 95) { const n = p + 1.2; setStat(n < 30 ? 'Maske işleniyor...' : n < 60 ? 'Bölge düzenleniyor...' : n < 80 ? 'Detaylar ekleniyor...' : 'Tamamlanıyor...'); return n; } return p; }); }, 500);
+    try {
+      const r = await fetch('/api/inpaint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: img, mask, prompt: inpaintPrompt }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Hata');
+      const d = await r.json();
+      if (d.success && d.resultImage) {
+        done = true; if (iv) clearInterval(iv); setProg(100); setStat('Tamamlandı!');
+        await new Promise(r => setTimeout(r, 400));
+        setRes(d.resultImage); setPos(50);
+        addToHistory({ id: Date.now() + '', orig: img, result: d.resultImage, room: 'Inpaint', style: inpaintPrompt || 'Bölgesel', ts: Date.now(), tool: 'inpaint' });
+      } else throw new Error('Üretilemedi');
+    } catch (e) { done = true; if (iv) clearInterval(iv); setProg(0); setErr(e instanceof Error ? e.message : 'Hata'); }
+    finally { setBusy(false); }
   };
 
   if (!ok) return null;
@@ -527,8 +638,8 @@ export default function LuxoraStudio() {
           </div>
         )}
 
-        {/* === HAS IMAGE: Show it === */}
-        {img && !res && (
+        {/* === HAS IMAGE: Show it (Redesign mode) === */}
+        {img && !res && tool === 'redesign' && (
           <div className="canvas-image fade-in" style={{ position: 'relative' }}>
             <img src={img} alt="" style={{ maxHeight: '70vh', objectFit: 'contain' }} />
 
@@ -557,6 +668,71 @@ export default function LuxoraStudio() {
                 <p style={{ color: '#d4a537', fontSize: 12, fontWeight: 500 }}>{stat}</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* === INPAINT CANVAS MODE === */}
+        {img && !res && tool === 'inpaint' && (
+          <div className="fade-in" style={{ position: 'relative', width: '100%', maxWidth: 720 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Paintbrush size={14} color="#d4a537" />
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#ccc' }}>Düzenlenecek alanı boyayın</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={clearMask} style={{ height: 30, padding: '0 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#888', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Eraser size={12} />Temizle
+                </button>
+                <button onClick={() => { setImg(null); setRes(null); }} style={{ height: 30, width: 30, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={paintContainerRef}
+              style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', cursor: 'crosshair' }}
+            >
+              <img
+                src={img}
+                alt=""
+                style={{ width: '100%', display: 'block' }}
+                onLoad={() => initMaskCanvas()}
+              />
+              <canvas
+                ref={maskCanvasRef}
+                onMouseDown={startPaint}
+                onMouseMove={movePaint}
+                onMouseUp={stopPaint}
+                onMouseLeave={stopPaint}
+                style={{
+                  position: 'absolute', inset: 0,
+                  width: '100%', height: '100%',
+                  opacity: 0.45, mixBlendMode: 'screen',
+                  cursor: 'crosshair',
+                }}
+              />
+            </div>
+
+            {/* Progress overlay for inpaint */}
+            {busy && (
+              <div style={{ position: 'absolute', inset: 0, top: 40, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, zIndex: 20, borderRadius: 12 }}>
+                <div style={{ position: 'relative', width: 72, height: 72 }}>
+                  <svg style={{ width: 72, height: 72, transform: 'rotate(-90deg)' }}>
+                    <circle cx="36" cy="36" r="30" stroke="var(--bg-3)" strokeWidth="3" fill="none" />
+                    <circle cx="36" cy="36" r="30" stroke="#d4a537" strokeWidth="3" fill="none" strokeLinecap="round" strokeDasharray={188.5} strokeDashoffset={188.5 - (188.5 * prog) / 100} style={{ transition: 'all 0.3s' }} />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ color: '#fff', fontSize: 16, fontWeight: 600 }}>{Math.round(prog)}%</span>
+                  </div>
+                </div>
+                <p style={{ color: '#d4a537', fontSize: 12, fontWeight: 500 }}>{stat}</p>
+              </div>
+            )}
+
+            <p style={{ fontSize: 10, color: '#444', marginTop: 8, textAlign: 'center' }}>
+              Beyaz alanlar düzenlenecek · Siyah alanlar korunacak
+            </p>
           </div>
         )}
 
@@ -763,17 +939,90 @@ export default function LuxoraStudio() {
           </div>
         )}
 
-        {/* === INPAINT TOOL (placeholder) === */}
+        {/* === INPAINT TOOL === */}
         {tool === "inpaint" && (
           <div className="fade-in">
             <div className="panel-section">
               <div className="panel-label">Bölgesel Düzenleme</div>
-              <div style={{ padding: 20, textAlign: 'center', color: '#444', fontSize: 12 }}>
-                <Paintbrush size={28} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }} />
-                <p>Görsel üzerinde düzenlemek istediğiniz alanı fırça ile seçin.</p>
-                <p style={{ marginTop: 8, fontSize: 11, color: '#333' }}>Yakında aktif olacak</p>
+              <p style={{ fontSize: 11, color: '#555', lineHeight: 1.6, marginBottom: 12 }}>
+                Görsel üzerinde düzenlemek istediğiniz alanı fırça ile boyayın, ne yapılmasını istediğinizi yazın.
+              </p>
+            </div>
+
+            {/* Brush Size */}
+            <div className="panel-section">
+              <div className="panel-label">Fırça Boyutu</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Minus size={12} color="#555" />
+                <input
+                  type="range"
+                  min="5" max="80" value={brushSize}
+                  onChange={e => setBrushSize(Number(e.target.value))}
+                  style={{ flex: 1, accentColor: '#d4a537' }}
+                />
+                <Plus size={12} color="#555" />
+                <span style={{ fontSize: 11, color: '#888', minWidth: 28, textAlign: 'right' }}>{brushSize}px</span>
+              </div>
+              {/* Brush preview */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+                <div style={{
+                  width: brushSize, height: brushSize, maxWidth: 60, maxHeight: 60,
+                  borderRadius: '50%', border: '2px solid rgba(212,165,55,0.5)',
+                  background: 'rgba(212,165,55,0.15)',
+                  transition: 'all 0.15s',
+                }} />
               </div>
             </div>
+
+            {/* Inpaint Prompt */}
+            <div className="panel-section">
+              <div className="panel-label">Ne yapılsın? <span style={{ textTransform: 'none', letterSpacing: 'normal', opacity: 0.5, fontWeight: 400 }}>(opsiyonel)</span></div>
+              <textarea
+                value={inpaintPrompt}
+                onChange={e => setInpaintPrompt(e.target.value.slice(0, 300))}
+                placeholder="Örn: Burayı şömine ile değiştir... (Boş bırakırsan siler)"
+                rows={3}
+                style={{
+                  width: '100%', padding: '10px 12px',
+                  backgroundColor: 'var(--bg-2)', color: '#fff',
+                  fontSize: 12, lineHeight: 1.5, borderRadius: 10,
+                  border: '1px solid var(--bdr)', outline: 'none',
+                  resize: 'none', transition: 'border-color 0.15s',
+                }}
+                onFocus={e => e.target.style.borderColor = 'rgba(212,165,55,0.2)'}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.06)'}
+              />
+            </div>
+
+            {/* Quick Actions */}
+            <div className="panel-section">
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                {['Kaldır', 'Şömine koy', 'Bitki ekle', 'Tablo as', 'Ayna koy'].map(q => (
+                  <button
+                    key={q}
+                    onClick={() => setInpaintPrompt(q === 'Kaldır' ? '' : q)}
+                    style={{
+                      height: 28, padding: '0 10px', borderRadius: 6,
+                      background: (q === 'Kaldır' && !inpaintPrompt) || inpaintPrompt === q ? 'rgba(212,165,55,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: '1px solid ' + ((q === 'Kaldır' && !inpaintPrompt) || inpaintPrompt === q ? 'rgba(212,165,55,0.3)' : 'rgba(255,255,255,0.06)'),
+                      color: (q === 'Kaldır' && !inpaintPrompt) || inpaintPrompt === q ? '#d4a537' : '#666',
+                      fontSize: 11, cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Generate Inpaint */}
+            <button
+              onClick={genInpaint}
+              disabled={!img || busy}
+              className={`btn-generate ${!img || busy ? 'disabled' : 'ready'}`}
+            >
+              {busy ? <><Loader2 size={16} className="animate-spin" />Düzenleniyor...</> : <><Paintbrush size={16} />Bölgeyi Düzenle</>}
+            </button>
           </div>
         )}
 
