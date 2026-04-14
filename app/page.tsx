@@ -6,7 +6,8 @@ import {
   Home, UtensilsCrossed, Bath, BedDouble, Monitor, DoorOpen,
   Flower2, Armchair, Sparkles, Info, Box, Plus, ExternalLink,
   RotateCcw, Compass, Crown, Ship, Paintbrush, Grid3x3,
-  Film, ChevronRight, Clock, Eye, Settings2, Wand2, Layers,
+  Film, ChevronRight, ChevronLeft, Clock, Eye, Settings2, Wand2, Layers,
+  PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 
 // ============================================
@@ -67,6 +68,7 @@ const STAGES = [
 export default function LuxoraStudio() {
   // — State
   const [tool, setTool] = useState<Tool>("redesign");
+  const [sideOpen, setSideOpen] = useState(true);
   const [room, setRoom] = useState("salon");
   const [style, setStyle] = useState("sessiz-luks");
   const [img, setImg] = useState<string | null>(null);
@@ -155,7 +157,7 @@ export default function LuxoraStudio() {
   // RENDER
   // ============================================
   return (
-    <div style={{ display: 'grid', gridTemplateRows: '56px 1fr', gridTemplateColumns: '260px 1fr 260px', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'grid', gridTemplateRows: '56px 1fr', gridTemplateColumns: `${sideOpen ? 260 : 60}px 1fr 260px`, height: '100vh', overflow: 'hidden', transition: 'grid-template-columns 0.2s ease' }}>
 
       {/* ======================================== */}
       {/* HEADER                                    */}
@@ -179,59 +181,110 @@ export default function LuxoraStudio() {
       {/* ======================================== */}
       {/* LEFT SIDEBAR                              */}
       {/* ======================================== */}
-      <aside style={{ overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0' }}>
+      <aside style={{ overflowY: 'auto', overflowX: 'hidden', borderRight: '1px solid rgba(255,255,255,0.06)', background: '#111114', padding: '16px 0', display: 'flex', flexDirection: 'column' as const, transition: 'width 0.2s ease' }}>
         {/* Tools */}
-        <div style={{ padding: '0 20px', marginBottom: 6 }}>
-          <div className="panel-label">Araçlar</div>
-        </div>
+        {sideOpen && (
+          <div style={{ padding: '0 20px', marginBottom: 6 }}>
+            <div className="panel-label">Araçlar</div>
+          </div>
+        )}
         {TOOLS.map(t => {
           const I = t.icon;
           return (
             <div
               key={t.id}
-              className={`nav-item ${tool === t.id ? 'active' : ''}`}
               onClick={() => setTool(t.id)}
+              title={!sideOpen ? t.label : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: sideOpen ? '10px 20px' : '10px 0',
+                justifyContent: sideOpen ? 'flex-start' : 'center',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                color: tool === t.id ? '#d4a537' : '#666',
+                background: tool === t.id ? 'rgba(212,165,55,0.05)' : 'transparent',
+                borderLeft: tool === t.id ? '2px solid #d4a537' : '2px solid transparent',
+                transition: 'all 0.15s',
+              }}
+              onMouseOver={e => { if (tool !== t.id) (e.currentTarget.style.color = '#aaa'); (e.currentTarget.style.background = 'rgba(255,255,255,0.02)'); }}
+              onMouseOut={e => { if (tool !== t.id) (e.currentTarget.style.color = '#666'); (e.currentTarget.style.background = tool === t.id ? 'rgba(212,165,55,0.05)' : 'transparent'); }}
             >
-              <I size={16} />
-              <div>
-                <div style={{ lineHeight: 1.2 }}>{t.label}</div>
-                <div style={{ fontSize: 10, color: '#555', marginTop: 2, fontWeight: 400 }}>{t.desc}</div>
-              </div>
+              <I size={sideOpen ? 16 : 20} />
+              {sideOpen && (
+                <div>
+                  <div style={{ lineHeight: 1.2 }}>{t.label}</div>
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2, fontWeight: 400 }}>{t.desc}</div>
+                </div>
+              )}
             </div>
           );
         })}
 
         {/* Divider */}
-        <div style={{ height: 1, background: 'var(--bdr)', margin: '16px 20px' }} />
+        <div style={{ height: 1, background: 'var(--bdr)', margin: sideOpen ? '16px 20px' : '16px 8px' }} />
 
         {/* History */}
-        <div style={{ padding: '0 20px', marginBottom: 8 }}>
-          <div className="panel-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={10} /> Geçmiş {hist.length > 0 && <span style={{ color: '#555' }}>({hist.length})</span>}
-          </div>
-        </div>
+        {sideOpen && (
+          <>
+            <div style={{ padding: '0 20px', marginBottom: 8 }}>
+              <div className="panel-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Clock size={10} /> Geçmiş {hist.length > 0 && <span style={{ color: '#555' }}>({hist.length})</span>}
+              </div>
+            </div>
 
-        {hist.length === 0 && (
-          <div style={{ padding: '0 20px', fontSize: 11, color: '#444' }}>
-            Henüz tasarım yok
+            {hist.length === 0 && (
+              <div style={{ padding: '0 20px', fontSize: 11, color: '#444' }}>
+                Henüz tasarım yok
+              </div>
+            )}
+
+            {hist.map(h => (
+              <div
+                key={h.id}
+                className="hist-item"
+                onClick={() => { setImg(h.orig); setRes(h.result); setPos(50); }}
+              >
+                <div className="thumb">
+                  <img src={h.result} alt="" />
+                </div>
+                <div className="meta">
+                  <div className="title">{h.room} · {h.style}</div>
+                  <div className="sub">{new Date(h.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* Collapsed history icon */}
+        {!sideOpen && hist.length > 0 && (
+          <div
+            onClick={() => setSideOpen(true)}
+            title="Geçmişi göster"
+            style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', cursor: 'pointer', color: '#555', transition: 'color 0.15s' }}
+            onMouseOver={e => e.currentTarget.style.color = '#aaa'}
+            onMouseOut={e => e.currentTarget.style.color = '#555'}
+          >
+            <Clock size={18} />
           </div>
         )}
 
-        {hist.map(h => (
-          <div
-            key={h.id}
-            className="hist-item"
-            onClick={() => { setImg(h.orig); setRes(h.result); setPos(50); }}
-          >
-            <div className="thumb">
-              <img src={h.result} alt="" />
-            </div>
-            <div className="meta">
-              <div className="title">{h.room} · {h.style}</div>
-              <div className="sub">{new Date(h.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
-            </div>
-          </div>
-        ))}
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Toggle button */}
+        <div
+          onClick={() => setSideOpen(!sideOpen)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: sideOpen ? 'flex-end' : 'center',
+            padding: sideOpen ? '8px 16px' : '8px 0',
+            cursor: 'pointer', color: '#555', transition: 'all 0.15s',
+          }}
+          onMouseOver={e => e.currentTarget.style.color = '#aaa'}
+          onMouseOut={e => e.currentTarget.style.color = '#555'}
+          title={sideOpen ? 'Daralt' : 'Genişlet'}
+        >
+          {sideOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        </div>
       </aside>
 
       {/* ======================================== */}
