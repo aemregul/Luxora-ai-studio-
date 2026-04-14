@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Each angle has a VERY specific, visual-first prompt
 const ROOM_ANGLES = [
-  { label: "Geniş Açı - Kapıdan Bakış", prompt: "Reposition the camera to the doorway entrance. Ultra wide angle 14mm lens, camera at eye level standing in the doorframe, looking straight into the room. The entire room is visible from wall to wall." },
-  { label: "Sol Duvar Perspektifi", prompt: "Reposition the camera to the far left corner of the room. Camera pressed against the left wall, angled 45 degrees to the right, showing the right wall and far wall in a diagonal composition. Strong perspective lines." },
-  { label: "Sağ Duvar Perspektifi", prompt: "Reposition the camera to the far right corner of the room. Camera pressed against the right wall, angled 45 degrees to the left, showing the left wall stretching away. Opposite perspective from the left wall shot." },
-  { label: "Pencere Yönü - İçeriden Dışa", prompt: "Reposition the camera to face directly toward the window. Camera is inside the room pointing straight at the window, silhouette effect, backlit by natural window light, furniture in foreground as dark shapes against bright window." },
-  { label: "Karşı Duvar - Ters Açı", prompt: "Reposition the camera to the opposite end of the room, 180 degree reverse angle. Camera now faces back toward where the original photo was taken. Everything is seen from the reverse direction." },
-  { label: "Yukarıdan Bakış (Bird's Eye)", prompt: "Reposition the camera directly above the room center, looking straight down. Top-down bird's eye view, floor plan perspective, all furniture seen from directly above, no walls visible, only floor and furniture tops." },
-  { label: "Alçak Açı - Yerden", prompt: "Reposition the camera to floor level, only 20cm above the ground. Extreme low angle looking upward, furniture legs prominent in foreground, ceiling visible, dramatic upward perspective, worm's eye view." },
-  { label: "Yakın Çekim Detay", prompt: "Reposition the camera very close to the most interesting furniture piece or decoration, macro-style close-up. Only one item fills most of the frame with sharp detail, shallow depth of field, background blurred." },
-  { label: "Panoramik 3/4 Açı", prompt: "Reposition the camera to a high corner near the ceiling. Elevated 3/4 overhead angle looking down diagonally across the entire room, showing the complete layout from above at 45 degrees, like a security camera angle." },
+  { label: "Geniş Açı - Kapıdan Bakış", prompt: "ultra wide angle architectural photograph taken from the entrance doorway looking into the room, 14mm lens, standing in doorframe, entire room visible wall to wall, strong vanishing point perspective, eye level" },
+  { label: "Sol Duvar Perspektifi", prompt: "architectural photograph taken from the far left corner of the room, camera pressed against the left wall, 45 degree diagonal view toward the opposite corner, strong converging perspective lines, left wall visible in peripheral" },
+  { label: "Sağ Duvar Perspektifi", prompt: "architectural photograph taken from the far right corner of the room, camera against the right wall aiming diagonally left, right wall edge visible, dramatic depth perspective toward the far corner" },
+  { label: "Pencere Yönü", prompt: "interior photograph facing directly toward the window, strong backlight, bright natural light flooding through window glass, furniture silhouetted against bright window, dramatic contre-jour lighting" },
+  { label: "Karşı Duvar - Ters Açı", prompt: "interior photograph taken from the back wall, 180 degree reverse view, camera faces the entrance door, showing the room from the completely opposite direction, reverse composition" },
+  { label: "Yukarıdan Bakış (Bird's Eye)", prompt: "bird's eye view photograph looking straight down from ceiling, top-down aerial perspective, floor plan view, all furniture seen from directly above, no walls visible, only floor and furniture tops" },
+  { label: "Alçak Açı - Yerden", prompt: "extreme low angle photograph taken from floor level, 20cm above ground, worm's eye view looking up, furniture legs prominent in foreground, ceiling and upper walls visible, dramatic upward perspective" },
+  { label: "Yakın Çekim Detay", prompt: "close-up macro photograph of room details, one decorative object or furniture texture filling the frame, shallow depth of field, bokeh background, material texture detail" },
+  { label: "Panoramik 3/4 Açı", prompt: "elevated 3/4 overhead photograph from a high corner near the ceiling, looking down diagonally at 45 degrees, showing the complete room layout, security camera style elevated perspective" },
 ];
 
 export async function POST(request: NextRequest) {
@@ -31,50 +32,59 @@ export async function POST(request: NextRequest) {
     const roomName = roomType || "room";
     const styleName = designStyle || "luxury";
 
-    const finalPrompt = `Transform this ${roomName} photo into a COMPLETELY DIFFERENT camera angle. ${angle.prompt}. ` +
-      `The room itself stays identical — same furniture, same colors, same materials, same ${styleName} style. ` +
-      `But the camera MUST be in a dramatically different position. The resulting image should look like a completely different photo taken in the same room. ` +
-      `Professional architectural photography, photorealistic, 8K quality.`;
-
-    console.log(`=== GRID PANEL ${idx + 1}/9: ${angle.label} ===`);
-
     // Upload to CDN if base64
     let imageUrl = image;
     if (image.startsWith('data:')) {
       imageUrl = await uploadToFalCDN(image, FAL_KEY);
     }
 
+    // Describe the room based on what we see, then ask for a NEW photo from a different angle
+    const scenePrompt = `A ${styleName} style ${roomName} interior, ${angle.prompt}, ` +
+      `photorealistic architectural photography, 8K, professional interior design magazine photo, ` +
+      `warm ambient lighting, high-end finishes`;
+
+    console.log(`=== GRID PANEL ${idx + 1}/9: ${angle.label} ===`);
+
     let resultUrl: string | null = null;
 
-    // Model 1: Nano Banana Pro Edit
+    // Strategy: Use FLUX Redux to generate a VARIATION with the angle as the primary prompt
+    // Redux takes the reference image loosely and generates based on prompt
     try {
-      const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/edit", {
+      console.log("Trying FLUX Redux (variation)...");
+      const res = await fetch("https://fal.run/fal-ai/flux/dev/redux", {
         method: "POST",
         headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: finalPrompt,
-          image_urls: [imageUrl],
+          prompt: scenePrompt,
+          image_url: imageUrl,
           num_images: 1,
-          aspect_ratio: "16:9",
-          output_format: "png",
+          image_size: "landscape_16_9",
+          num_inference_steps: 28,
+          guidance_scale: 3.5,
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.images?.[0]?.url) resultUrl = data.images[0].url;
+        if (data.images?.[0]?.url) {
+          resultUrl = data.images[0].url;
+          console.log("✅ FLUX Redux success");
+        }
+      } else {
+        console.error("FLUX Redux error:", await res.text());
       }
     } catch (err) {
-      console.error("Nano Banana Pro error:", err);
+      console.error("FLUX Redux error:", err);
     }
 
-    // Model 2: Nano Banana 2 Edit (fallback)
+    // Fallback: Nano Banana Pro edit (less ideal for angles but works)
     if (!resultUrl) {
       try {
-        const res = await fetch("https://fal.run/fal-ai/nano-banana-2/edit", {
+        console.log("Fallback: Nano Banana Pro edit...");
+        const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/edit", {
           method: "POST",
           headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: finalPrompt,
+            prompt: `Generate a new photo of this same room from a COMPLETELY different camera position: ${angle.prompt}. Same room, same furniture, but DIFFERENT camera angle. ${styleName} style interior.`,
             image_urls: [imageUrl],
             num_images: 1,
             aspect_ratio: "16:9",
@@ -86,7 +96,7 @@ export async function POST(request: NextRequest) {
           if (data.images?.[0]?.url) resultUrl = data.images[0].url;
         }
       } catch (err) {
-        console.error("Nano Banana 2 error:", err);
+        console.error("Nano Banana Pro error:", err);
       }
     }
 
