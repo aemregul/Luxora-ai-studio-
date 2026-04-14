@@ -152,6 +152,13 @@ export default function LuxoraStudio() {
   const startFileRef = useRef<HTMLInputElement>(null);
   const endFileRef = useRef<HTMLInputElement>(null);
 
+  // Walkthrough state
+  const [walkSegments, setWalkSegments] = useState<string[]>([]);
+  const [walkBusy, setWalkBusy] = useState(false);
+  const [walkProgress, setWalkProgress] = useState(0);
+  const [walkCurrent, setWalkCurrent] = useState(0);
+  const walkVideoRef = useRef<HTMLVideoElement>(null);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
   const sideTimer = useRef<NodeJS.Timeout | null>(null);
@@ -454,6 +461,55 @@ export default function LuxoraStudio() {
       clearInterval(iv); setVideoProgress(0);
       setErr(e instanceof Error ? e.message : 'Video hatası');
     } finally { setVideoBusy(false); }
+  };
+
+  // ============ WALKTHROUGH ============
+  const WALK_ROUTE = [0, 1, 3, 4, 8, 5]; // Kapı → Sol → Pencere → Ters → Panoramik → Kuş
+
+  const genWalkthrough = async () => {
+    const available = WALK_ROUTE.filter(i => gridPanels[i]);
+    if (available.length < 2) { setErr('En az 2 açı paneli gerekli'); return; }
+
+    setWalkBusy(true); setWalkProgress(0); setWalkSegments([]); setWalkCurrent(0); setErr(null);
+    const segments: string[] = [];
+    const totalPairs = available.length - 1;
+
+    for (let i = 0; i < totalPairs; i++) {
+      const startPanel = gridPanels[available[i]]!;
+      const endPanel = gridPanels[available[i + 1]]!;
+      setWalkProgress(Math.round((i / totalPairs) * 100));
+
+      try {
+        const r = await fetch('/api/video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            startImage: startPanel,
+            endImage: endPanel,
+            prompt: 'Smooth cinematic camera transition between two angles of the same room, slow dolly movement, professional architectural videography',
+            duration: 5,
+          }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.success && d.videoUrl) {
+            segments.push(d.videoUrl);
+            setWalkSegments([...segments]);
+          }
+        }
+      } catch {}
+    }
+
+    setWalkProgress(100);
+    setWalkBusy(false);
+  };
+
+  const playNextSegment = () => {
+    if (walkCurrent < walkSegments.length - 1) {
+      setWalkCurrent(prev => prev + 1);
+    } else {
+      setWalkCurrent(0); // loop
+    }
   };
 
   if (!ok) return null;
@@ -885,29 +941,122 @@ export default function LuxoraStudio() {
 
             {/* Action buttons */}
             {gridDone && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => { setImg(null); setGridPanels(Array(9).fill(null)); setGridDone(false); setWalkSegments([]); }}
+                    style={{
+                      flex: 1, height: 36, borderRadius: 10,
+                      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                      color: '#aaa', fontSize: 12, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <Upload size={12} />Yeni Görsel
+                  </button>
+                  <button
+                    onClick={genGrid}
+                    style={{
+                      flex: 1, height: 36, borderRadius: 10,
+                      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                      color: '#aaa', fontSize: 12, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <RotateCcw size={12} />Tekrar Üret
+                  </button>
+                </div>
+
+                {/* Walkthrough Button */}
                 <button
-                  onClick={() => { setImg(null); setGridPanels(Array(9).fill(null)); setGridDone(false); }}
+                  onClick={genWalkthrough}
+                  disabled={walkBusy || gridPanels.filter(Boolean).length < 2}
                   style={{
-                    flex: 1, height: 36, borderRadius: 10,
-                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#aaa', fontSize: 12, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    width: '100%', height: 40, marginTop: 8, borderRadius: 10,
+                    background: walkBusy ? 'rgba(212,165,55,0.04)' : 'linear-gradient(135deg, rgba(212,165,55,0.15), rgba(212,165,55,0.05))',
+                    border: '1px solid rgba(212,165,55,0.3)',
+                    color: '#d4a537', fontSize: 13, fontWeight: 600, cursor: walkBusy ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    opacity: walkBusy || gridPanels.filter(Boolean).length < 2 ? 0.5 : 1,
+                    transition: 'all 0.15s',
                   }}
                 >
-                  <Upload size={12} />Yeni Görsel
+                  {walkBusy ? (
+                    <><Loader2 size={14} className="animate-spin" />Walkthrough Oluşturuluyor ({walkProgress}%)...</>
+                  ) : (
+                    <><Film size={14} />🎬 Walkthrough Video Oluştur</>
+                  )}
                 </button>
-                <button
-                  onClick={genGrid}
-                  style={{
-                    flex: 1, height: 36, borderRadius: 10,
-                    background: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)',
-                    color: '#d4a537', fontSize: 12, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  }}
-                >
-                  <RotateCcw size={12} />Tekrar Üret
-                </button>
+
+                {/* Walkthrough Progress */}
+                {walkBusy && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${walkProgress}%`, background: '#d4a537', borderRadius: 2, transition: 'width 0.5s' }} />
+                    </div>
+                    <p style={{ fontSize: 10, color: '#555', marginTop: 4, textAlign: 'center' }}>
+                      {walkSegments.length} segment hazır — toplam {walkSegments.length * 5}s video
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Walkthrough Video Player */}
+            {walkSegments.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Film size={12} color="#d4a537" />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#ccc' }}>Walkthrough</span>
+                    <span style={{ fontSize: 10, color: '#555' }}>
+                      Segment {walkCurrent + 1}/{walkSegments.length}
+                    </span>
+                  </div>
+                  <a
+                    href={walkSegments[walkCurrent]}
+                    download={`luxora_walk_seg${walkCurrent + 1}.mp4`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      height: 26, padding: '0 10px', borderRadius: 6,
+                      background: 'rgba(212,165,55,0.08)', border: '1px solid rgba(212,165,55,0.2)',
+                      color: '#d4a537', fontSize: 10, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <Download size={10} />İndir
+                  </a>
+                </div>
+
+                <div style={{ borderRadius: 10, overflow: 'hidden', background: '#000' }}>
+                  <video
+                    ref={walkVideoRef}
+                    key={walkSegments[walkCurrent]}
+                    src={walkSegments[walkCurrent]}
+                    autoPlay
+                    onEnded={playNextSegment}
+                    controls
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                </div>
+
+                {/* Segment indicators */}
+                <div style={{ display: 'flex', gap: 3, marginTop: 8, justifyContent: 'center' }}>
+                  {walkSegments.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setWalkCurrent(i)}
+                      style={{
+                        width: i === walkCurrent ? 24 : 8, height: 8,
+                        borderRadius: 4, border: 'none', cursor: 'pointer',
+                        background: i === walkCurrent ? '#d4a537' : 'rgba(255,255,255,0.1)',
+                        transition: 'all 0.2s',
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>
