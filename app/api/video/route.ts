@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { startImage, endImage, prompt, duration, action, requestId, model } = await request.json();
-
-    // Model selection: fast (default for walkthrough) or standard
-    const modelEndpoint = model === 'standard' 
-      ? 'bytedance/seedance-2.0/image-to-video'
-      : 'bytedance/seedance-2.0/fast/image-to-video';
+    const { startImage, endImage, prompt, duration, action, requestId, statusUrl, responseUrl } = await request.json();
 
     const FAL_KEY = process.env.FAL_KEY;
     if (!FAL_KEY) {
@@ -15,42 +10,49 @@ export async function POST(request: NextRequest) {
     }
 
     // === POLL MODE: Check status of existing request ===
-    if (action === 'poll' && requestId) {
-      const statusRes = await fetch(`https://queue.fal.run/${modelEndpoint}/requests/${requestId}/status`, {
-        headers: { "Authorization": `Key ${FAL_KEY}` },
-      });
-
-      if (!statusRes.ok) {
-        return NextResponse.json({ status: 'polling', message: 'Durum kontrol ediliyor...' });
-      }
-
-      const statusData = await statusRes.json();
-
-      if (statusData.status === "COMPLETED") {
-        // Fetch result
-        const resultRes = await fetch(`https://queue.fal.run/${modelEndpoint}/requests/${requestId}`, {
+    if (action === 'poll' && requestId && statusUrl) {
+      try {
+        const statusRes = await fetch(statusUrl, {
           headers: { "Authorization": `Key ${FAL_KEY}` },
         });
 
-        if (!resultRes.ok) return NextResponse.json({ status: 'error', error: 'Sonuç alınamadı' });
-        const resultData = await resultRes.json();
-
-        if (resultData.video?.url) {
-          return NextResponse.json({ status: 'completed', videoUrl: resultData.video.url });
+        if (!statusRes.ok) {
+          console.log("Poll status not ok:", statusRes.status);
+          return NextResponse.json({ status: 'processing', message: 'Kuyrukta...' });
         }
-        return NextResponse.json({ status: 'error', error: 'Video URL bulunamadı' });
-      }
 
-      if (statusData.status === "FAILED") {
-        return NextResponse.json({ status: 'error', error: 'Video üretimi başarısız' });
-      }
+        const statusData = await statusRes.json();
+        console.log("Poll status:", statusData.status, "position:", statusData.queue_position);
 
-      // IN_QUEUE or IN_PROGRESS
-      return NextResponse.json({ 
-        status: 'processing', 
-        queueStatus: statusData.status,
-        position: statusData.queue_position,
-      });
+        if (statusData.status === "COMPLETED") {
+          // Fetch result using response_url
+          const resultRes = await fetch(responseUrl, {
+            headers: { "Authorization": `Key ${FAL_KEY}` },
+          });
+
+          if (!resultRes.ok) return NextResponse.json({ status: 'error', error: 'Sonuç alınamadı' });
+          const resultData = await resultRes.json();
+
+          if (resultData.video?.url) {
+            return NextResponse.json({ status: 'completed', videoUrl: resultData.video.url });
+          }
+          return NextResponse.json({ status: 'error', error: 'Video URL bulunamadı' });
+        }
+
+        if (statusData.status === "FAILED") {
+          return NextResponse.json({ status: 'error', error: 'Video üretimi başarısız' });
+        }
+
+        // IN_QUEUE or IN_PROGRESS
+        return NextResponse.json({ 
+          status: 'processing', 
+          queueStatus: statusData.status,
+          position: statusData.queue_position,
+        });
+      } catch (pollErr) {
+        console.error("Poll error:", pollErr);
+        return NextResponse.json({ status: 'processing', message: 'Tekrar deneniyor...' });
+      }
     }
 
     // === SUBMIT MODE: Start new video generation ===
@@ -90,10 +92,11 @@ export async function POST(request: NextRequest) {
       body.end_image_url = endUrl;
     }
 
-    console.log("Body:", JSON.stringify(body, null, 2));
+    // Submit to queue — use the fast endpoint
+    const submitUrl = "https://queue.fal.run/bytedance/seedance-2.0/fast/image-to-video";
+    console.log("Submit URL:", submitUrl);
 
-    // Submit to queue (returns immediately with request_id)
-    const submitRes = await fetch(`https://queue.fal.run/${modelEndpoint}`, {
+    const submitRes = await fetch(submitUrl, {
       method: "POST",
       headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -105,12 +108,15 @@ export async function POST(request: NextRequest) {
       throw new Error(`Video kuyruğa eklenemedi: ${submitRes.status}`);
     }
 
-    const { request_id } = await submitRes.json();
-    console.log("✅ Queue request_id:", request_id);
+    const submitData = await submitRes.json();
+    console.log("✅ Submit response:", JSON.stringify(submitData));
 
+    // Return the ACTUAL URLs from the API response (they differ from submit URL!)
     return NextResponse.json({ 
       success: true, 
-      requestId: request_id,
+      requestId: submitData.request_id,
+      statusUrl: submitData.status_url,
+      responseUrl: submitData.response_url,
       status: 'submitted',
     });
 
