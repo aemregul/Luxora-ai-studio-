@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const maxDuration = 120; // 2 minutes max per panel
+
 const ROOM_ANGLES = [
   { label: "Geniş Açı - Kapıdan Bakış", prompt: "ultra wide angle architectural photograph taken from the entrance doorway looking into the room, 14mm lens, standing in doorframe, entire room visible wall to wall, strong vanishing point perspective, eye level" },
   { label: "Sol Duvar Perspektifi", prompt: "architectural photograph taken from the far left corner of the room, camera pressed against the left wall, 45 degree diagonal view toward the opposite corner, strong converging perspective lines" },

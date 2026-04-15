@@ -393,27 +393,23 @@ export default function LuxoraStudio() {
     const roomLabel = ROOMS.find(r => r.id === room)?.label || room;
     const styleLabel = STYLES.find(s => s.id === style)?.label || style;
 
-    let completed = 0;
-    // Generate 9 panels in batches of 3
-    for (let batch = 0; batch < 3; batch++) {
-      const batchPromises = [0, 1, 2].map(i => {
-        const idx = batch * 3 + i;
-        return fetch('/api/grid', {
+    // Generate panels one by one (sequential) to avoid timeouts
+    for (let idx = 0; idx < 9; idx++) {
+      try {
+        setGridProgress(Math.round((idx / 9) * 100));
+        const r = await fetch('/api/grid', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: img, panelIndex: idx, roomType: roomLabel, designStyle: styleLabel }),
-        })
-          .then(r => r.json())
-          .then(d => {
-            if (d.success && d.imageUrl) {
-              setGridPanels(prev => { const n = [...prev]; n[idx] = d.imageUrl; return n; });
-            }
-            completed++;
-            setGridProgress(Math.round((completed / 9) * 100));
-          })
-          .catch(() => { completed++; setGridProgress(Math.round((completed / 9) * 100)); });
-      });
-      await Promise.all(batchPromises);
+        });
+        const d = await r.json();
+        if (d.success && d.imageUrl) {
+          setGridPanels(prev => { const n = [...prev]; n[idx] = d.imageUrl; return n; });
+        }
+      } catch (e) {
+        console.error(`Panel ${idx} error:`, e);
+      }
+      setGridProgress(Math.round(((idx + 1) / 9) * 100));
     }
     setGridBusy(false); setGridDone(true);
   };
