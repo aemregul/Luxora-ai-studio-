@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Each angle has a VERY specific, visual-first prompt
 const ROOM_ANGLES = [
   { label: "Geniş Açı - Kapıdan Bakış", prompt: "ultra wide angle architectural photograph taken from the entrance doorway looking into the room, 14mm lens, standing in doorframe, entire room visible wall to wall, strong vanishing point perspective, eye level" },
-  { label: "Sol Duvar Perspektifi", prompt: "architectural photograph taken from the far left corner of the room, camera pressed against the left wall, 45 degree diagonal view toward the opposite corner, strong converging perspective lines, left wall visible in peripheral" },
-  { label: "Sağ Duvar Perspektifi", prompt: "architectural photograph taken from the far right corner of the room, camera against the right wall aiming diagonally left, right wall edge visible, dramatic depth perspective toward the far corner" },
+  { label: "Sol Duvar Perspektifi", prompt: "architectural photograph taken from the far left corner of the room, camera pressed against the left wall, 45 degree diagonal view toward the opposite corner, strong converging perspective lines" },
+  { label: "Sağ Duvar Perspektifi", prompt: "architectural photograph taken from the far right corner of the room, camera against the right wall aiming diagonally left, dramatic depth perspective toward the far corner" },
   { label: "Pencere Yönü", prompt: "interior photograph facing directly toward the window, strong backlight, bright natural light flooding through window glass, furniture silhouetted against bright window, dramatic contre-jour lighting" },
-  { label: "Karşı Duvar - Ters Açı", prompt: "interior photograph taken from the back wall, 180 degree reverse view, camera faces the entrance door, showing the room from the completely opposite direction, reverse composition" },
+  { label: "Karşı Duvar - Ters Açı", prompt: "interior photograph taken from the back wall, 180 degree reverse view, camera faces the entrance door, showing the room from the completely opposite direction" },
   { label: "Yukarıdan Bakış (Bird's Eye)", prompt: "bird's eye view photograph looking straight down from ceiling, top-down aerial perspective, floor plan view, all furniture seen from directly above, no walls visible, only floor and furniture tops" },
-  { label: "Alçak Açı - Yerden", prompt: "extreme low angle photograph taken from floor level, 20cm above ground, worm's eye view looking up, furniture legs prominent in foreground, ceiling and upper walls visible, dramatic upward perspective" },
+  { label: "Alçak Açı - Yerden", prompt: "extreme low angle photograph taken from floor level, 20cm above ground, worm's eye view looking up, furniture legs prominent in foreground, ceiling visible, dramatic upward perspective" },
   { label: "Yakın Çekim Detay", prompt: "close-up macro photograph of room details, one decorative object or furniture texture filling the frame, shallow depth of field, bokeh background, material texture detail" },
-  { label: "Panoramik 3/4 Açı", prompt: "elevated 3/4 overhead photograph from a high corner near the ceiling, looking down diagonally at 45 degrees, showing the complete room layout, security camera style elevated perspective" },
+  { label: "Panoramik 3/4 Açı", prompt: "elevated 3/4 overhead photograph from a high corner near the ceiling, looking down diagonally at 45 degrees, showing the complete room layout, elevated perspective" },
 ];
 
 export async function POST(request: NextRequest) {
@@ -38,53 +37,45 @@ export async function POST(request: NextRequest) {
       imageUrl = await uploadToFalCDN(image, FAL_KEY);
     }
 
-    // Describe the room based on what we see, then ask for a NEW photo from a different angle
-    const scenePrompt = `A ${styleName} style ${roomName} interior, ${angle.prompt}, ` +
-      `photorealistic architectural photography, 8K, professional interior design magazine photo, ` +
-      `warm ambient lighting, high-end finishes`;
+    const finalPrompt = `Transform this ${roomName} photo into a completely different camera angle. ${angle.prompt}. ` +
+      `Same room, same furniture, same ${styleName} style. Different camera position. ` +
+      `Photorealistic, 8K, professional architectural photography.`;
 
     console.log(`=== GRID PANEL ${idx + 1}/9: ${angle.label} ===`);
 
     let resultUrl: string | null = null;
 
-    // Strategy: Use FLUX Redux to generate a VARIATION with the angle as the primary prompt
-    // Redux takes the reference image loosely and generates based on prompt
+    // Nano Banana Pro Edit
     try {
-      console.log("Trying FLUX Redux (variation)...");
-      const res = await fetch("https://fal.run/fal-ai/flux/dev/redux", {
+      const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/edit", {
         method: "POST",
         headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: scenePrompt,
-          image_url: imageUrl,
+          prompt: finalPrompt,
+          image_urls: [imageUrl],
           num_images: 1,
-          image_size: "landscape_16_9",
-          num_inference_steps: 28,
-          guidance_scale: 3.5,
+          aspect_ratio: "16:9",
+          output_format: "png",
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.images?.[0]?.url) {
-          resultUrl = data.images[0].url;
-          console.log("✅ FLUX Redux success");
-        }
+        if (data.images?.[0]?.url) resultUrl = data.images[0].url;
       } else {
-        console.error("FLUX Redux error:", await res.text());
+        console.error("Nano Banana Pro error:", await res.text());
       }
     } catch (err) {
-      console.error("FLUX Redux error:", err);
+      console.error("Nano Banana Pro error:", err);
     }
 
-    // Fallback: Nano Banana Pro edit (less ideal for angles but works)
+    // Fallback: Nano Banana 2 Edit
     if (!resultUrl) {
       try {
-        console.log("Fallback: Nano Banana Pro edit...");
-        const res = await fetch("https://fal.run/fal-ai/nano-banana-pro/edit", {
+        const res = await fetch("https://fal.run/fal-ai/nano-banana-2/edit", {
           method: "POST",
           headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: `Generate a new photo of this same room from a COMPLETELY different camera position: ${angle.prompt}. Same room, same furniture, but DIFFERENT camera angle. ${styleName} style interior.`,
+            prompt: finalPrompt,
             image_urls: [imageUrl],
             num_images: 1,
             aspect_ratio: "16:9",
@@ -96,7 +87,7 @@ export async function POST(request: NextRequest) {
           if (data.images?.[0]?.url) resultUrl = data.images[0].url;
         }
       } catch (err) {
-        console.error("Nano Banana Pro error:", err);
+        console.error("Nano Banana 2 error:", err);
       }
     }
 
