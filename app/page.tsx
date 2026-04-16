@@ -65,6 +65,7 @@ const ROOMS: Room[] = [
 ];
 
 const STYLES: Style[] = [
+  { id: "serbest", label: "Serbest / Referans Görsel" },
   { id: "sessiz-luks", label: "Sessiz Lüks" },
   { id: "italyan", label: "İtalyan Mimari" },
   { id: "luxury-konsept", label: "Luxury Konsept" },
@@ -104,7 +105,8 @@ export default function LuxoraStudio() {
   const [tool, setTool] = useState<Tool>("redesign");
   const [sideOpen, setSideOpen] = useState(false);
   const [room, setRoom] = useState("salon");
-  const [style, setStyle] = useState("sessiz-luks");
+  const [style, setStyle] = useState("serbest");
+  const [refImg, setRefImg] = useState<string | null>(null);
   const [img, setImg] = useState<string | null>(null);
   const [res, setRes] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -261,7 +263,7 @@ export default function LuxoraStudio() {
     let iv: NodeJS.Timeout | null = null; let done = false;
     iv = setInterval(() => { if (done) { if (iv) clearInterval(iv); return; } setProg(p => { if (p < 95) { const n = p + 0.8; setStat(STAGES.findLast(s => n >= s.p)?.m || ""); return n; } return p; }); }, 500);
     try {
-      const r = await fetch("/api/redesign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: img, roomType: room, designStyle: style, options: { changeWalls: walls, changeFloor: floor, changeLighting: light, keepLayout: keep }, additionalPrompt: prompt }) });
+      const r = await fetch("/api/redesign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: img, roomType: room, designStyle: style, options: { changeWalls: walls, changeFloor: floor, changeLighting: light, keepLayout: keep }, additionalPrompt: prompt, referenceImage: refImg }) });
       if (!r.ok) throw new Error((await r.json()).error || "Hata");
       const d = await r.json();
       if (d.success && d.resultImage) {
@@ -1306,6 +1308,28 @@ export default function LuxoraStudio() {
                 ))}
               </select>
             </div>
+
+            {/* Reference Image — shown when 'Serbest' is selected */}
+            {style === 'serbest' && (
+              <div className="panel-section">
+                <div className="panel-label">Referans Görsel <span style={{ textTransform: 'none', letterSpacing: 'normal', opacity: 0.5, fontWeight: 400 }}>(opsiyonel)</span></div>
+                <div style={{ fontSize: 11, color: '#666', marginBottom: 8 }}>Tasarımın stilini belirlemek için bir referans görsel yükleyin</div>
+                {refImg ? (
+                  <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(212,165,55,0.3)' }}>
+                    <img src={refImg} alt="Referans" style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+                    <button
+                      onClick={() => setRefImg(null)}
+                      style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', border: 'none', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >×</button>
+                  </div>
+                ) : (
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 80, borderRadius: 10, border: '1px dashed rgba(212,165,55,0.2)', background: 'rgba(212,165,55,0.03)', cursor: 'pointer', fontSize: 12, color: '#888', transition: 'all 0.15s' }}>
+                    <input type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = () => setRefImg(r.result as string); r.readAsDataURL(f); } }} />
+                    📎 Referans Yükle
+                  </label>
+                )}
+              </div>
+            )}
 
             {/* Options */}
             <div className="panel-section">

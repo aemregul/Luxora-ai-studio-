@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { image, roomType, designStyle, options, additionalPrompt } = await request.json();
+    const { image, roomType, designStyle, options, additionalPrompt, referenceImage } = await request.json();
 
     if (!image) {
       return NextResponse.json({ error: 'Görsel gereklidir' }, { status: 400 });
@@ -36,9 +36,25 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================
-    // STEP 2: Interior design prompt oluştur
+    // STEP 2: Referans görsel CDN'e yükle
     // ============================================
-    const designPrompt = buildDesignPrompt(roomType, designStyle, options, additionalPrompt, roomAnalysis);
+    let refUrl: string | null = null;
+    if (referenceImage && referenceImage.startsWith('data:')) {
+      try {
+        console.log("Referans görsel CDN'e yükleniyor...");
+        refUrl = await uploadToFalCDN(referenceImage, FAL_KEY);
+        console.log("✅ Referans CDN URL:", refUrl.substring(0, 80) + "...");
+      } catch (err) {
+        console.warn("Referans yükleme hatası:", err);
+      }
+    } else if (referenceImage) {
+      refUrl = referenceImage;
+    }
+
+    // ============================================
+    // STEP 3: Interior design prompt oluştur
+    // ============================================
+    const designPrompt = buildDesignPrompt(roomType, designStyle, options, additionalPrompt, roomAnalysis, refUrl);
     console.log("=== FINAL PROMPT ===");
     console.log(designPrompt);
     console.log("=== END PROMPT ===");
@@ -71,7 +87,8 @@ export async function POST(request: NextRequest) {
     try {
       console.log("Model 1: Nano Banana Pro Edit deneniyor...");
       console.log("Mode:", isSpecificEdit ? "SPECIFIC EDIT" : "FULL REDESIGN");
-      resultImageUrl = await generateWithNanoBananaPro(imageUrl, designPrompt, FAL_KEY);
+      const imageUrls = refUrl ? [imageUrl, refUrl] : [imageUrl];
+      resultImageUrl = await generateWithNanoBananaPro(imageUrls, designPrompt, FAL_KEY);
       console.log("✅ Nano Banana Pro başarılı!");
     } catch (err) {
       console.error("❌ Nano Banana Pro hatası:", err);
@@ -81,7 +98,8 @@ export async function POST(request: NextRequest) {
     if (!resultImageUrl) {
       try {
         console.log("Model 2: Nano Banana 2 Edit deneniyor...");
-        resultImageUrl = await generateWithNanoBanana2(imageUrl, designPrompt, FAL_KEY);
+        const imageUrls2 = refUrl ? [imageUrl, refUrl] : [imageUrl];
+        resultImageUrl = await generateWithNanoBanana2(imageUrls2, designPrompt, FAL_KEY);
         console.log("✅ Nano Banana 2 başarılı!");
       } catch (err) {
         console.error("❌ Nano Banana 2 hatası:", err);
@@ -199,7 +217,8 @@ function buildDesignPrompt(
   designStyle: string,
   options: { changeWalls: boolean; changeFloor: boolean; changeLighting: boolean; keepLayout: boolean },
   additionalPrompt: string,
-  roomAnalysis: string
+  roomAnalysis: string,
+  referenceUrl?: string | null
 ): string {
 
   // ---- ODA TÜRLERİ: her oda için spesifik mobilya listesi ----
@@ -263,7 +282,14 @@ function buildDesignPrompt(
 
   // ---- BUILD PROMPT ----
   const roomInfo = roomConfig[roomType] || { name: "luxury room", furniture: "designer furniture, premium accessories, artwork, lighting, rugs, and decorative objects" };
-  const styleDesc = stylePrompts[designStyle] || "modern luxury interior design with premium furniture and finishes";
+  
+  // Serbest mod: referans görsel veya genel lüks stil
+  const isFreeStyle = designStyle === 'serbest';
+  const styleDesc = isFreeStyle 
+    ? (referenceUrl 
+        ? "Match the EXACT design style, color palette, materials, textures, and aesthetic shown in the second reference image. Replicate every visual detail of that style" 
+        : "modern luxury interior design with premium furniture and finishes, creative freedom to choose the best aesthetic")
+    : (stylePrompts[designStyle] || "modern luxury interior design with premium furniture and finishes");
 
   // ===== İKİ MOD: SPESİFİK DÜZENLEME vs TAM TASARIM =====
   const hasSpecificEdit = additionalPrompt && additionalPrompt.trim().length > 0;
@@ -362,10 +388,11 @@ function buildDesignPrompt(
 // ============================================
 // MODEL 1: NANO BANANA PRO (en iyi kalite)
 // ============================================
-async function generateWithNanoBananaPro(imageData: string, prompt: string, apiKey: string): Promise<string> {
+async function generateWithNanoBananaPro(imageData: string | string[], prompt: string, apiKey: string): Promise<string> {
+  const imageUrls = Array.isArray(imageData) ? imageData : [imageData];
   const requestBody = {
     prompt: prompt,
-    image_urls: [imageData],
+    image_urls: imageUrls,
     num_images: 1,
     aspect_ratio: "16:9",
     output_format: "png",
@@ -397,10 +424,11 @@ async function generateWithNanoBananaPro(imageData: string, prompt: string, apiK
 // ============================================
 // MODEL 2: NANO BANANA 2 (hızlı fallback)
 // ============================================
-async function generateWithNanoBanana2(imageData: string, prompt: string, apiKey: string): Promise<string> {
+async function generateWithNanoBanana2(imageData: string | string[], prompt: string, apiKey: string): Promise<string> {
+  const imageUrls = Array.isArray(imageData) ? imageData : [imageData];
   const requestBody = {
     prompt: prompt,
-    image_urls: [imageData],
+    image_urls: imageUrls,
     num_images: 1,
     aspect_ratio: "16:9",
     output_format: "png",
