@@ -76,49 +76,88 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================
-    // STEP 4: Fal AI ile görsel üret
+    // STEP 5: Fal AI ile görsel üret
     // ============================================
     let resultImageUrl: string | null = null;
 
     // Spesifik düzenleme mi tam tasarım mı?
     const isSpecificEdit = additionalPrompt && additionalPrompt.trim().length > 0;
+    const hasReference = !!refUrl;
 
-    // Model 1: Nano Banana Pro (en iyi sonuç — Gemini 3 Pro Image)
-    try {
-      console.log("Model 1: Nano Banana Pro Edit deneniyor...");
-      console.log("Mode:", isSpecificEdit ? "SPECIFIC EDIT" : "FULL REDESIGN");
-      const imageUrls = refUrl ? [imageUrl, refUrl] : [imageUrl];
-      resultImageUrl = await generateWithNanoBananaPro(imageUrls, designPrompt, FAL_KEY);
-      console.log("✅ Nano Banana Pro başarılı!");
-    } catch (err) {
-      console.error("❌ Nano Banana Pro hatası:", err);
-    }
+    if (hasReference) {
+      // ===== REFERANS GÖRSEL MODU: FLUX 2 Kontext/Flex öncelikli =====
+      console.log("=== REFERANS GÖRSEL MODU ===");
 
-    // Model 2: Nano Banana 2 (hızlı fallback — Gemini 3.1 Flash)
-    if (!resultImageUrl) {
+      // Model 1: FLUX 2 Flex Edit (multi-reference @image1, @image2)
       try {
-        console.log("Model 2: Nano Banana 2 Edit deneniyor...");
-        const imageUrls2 = refUrl ? [imageUrl, refUrl] : [imageUrl];
-        resultImageUrl = await generateWithNanoBanana2(imageUrls2, designPrompt, FAL_KEY);
-        console.log("✅ Nano Banana 2 başarılı!");
+        console.log("Model 1: FLUX 2 Flex Edit (referans) deneniyor...");
+        const refPrompt = `Redesign @image1 (the room) to match the exact design style, furniture aesthetic, color palette, materials, and atmosphere shown in @image2 (the reference). ${additionalPrompt || ''} Keep the room's architectural structure. Photorealistic, 8K quality.`;
+        resultImageUrl = await generateWithFluxKontext([imageUrl, refUrl], refPrompt, FAL_KEY);
+        console.log("✅ FLUX 2 Flex başarılı!");
       } catch (err) {
-        console.error("❌ Nano Banana 2 hatası:", err);
+        console.error("❌ FLUX 2 Flex hatası:", err);
+      }
+
+      // Model 2: FLUX 2 Pro Edit (fallback with reference)
+      if (!resultImageUrl) {
+        try {
+          console.log("Model 2: FLUX 2 Pro Edit (referans fallback) deneniyor...");
+          resultImageUrl = await generateWithFlux2ProEdit(imageUrl, designPrompt, FAL_KEY, 0.75, refUrl);
+          console.log("✅ FLUX 2 Pro Edit başarılı!");
+        } catch (err) {
+          console.error("❌ FLUX 2 Pro Edit hatası:", err);
+        }
+      }
+
+      // Model 3: Nano Banana Pro (son çare, referansla)
+      if (!resultImageUrl) {
+        try {
+          console.log("Model 3: Nano Banana Pro (referans fallback) deneniyor...");
+          resultImageUrl = await generateWithNanoBananaPro([imageUrl, refUrl], designPrompt, FAL_KEY);
+          console.log("✅ Nano Banana Pro başarılı!");
+        } catch (err) {
+          console.error("❌ Nano Banana Pro hatası:", err);
+        }
+      }
+
+    } else {
+      // ===== NORMAL MOD: Nano Banana Pro öncelikli =====
+      
+      // Model 1: Nano Banana Pro (en iyi sonuç — Gemini 3 Pro Image)
+      try {
+        console.log("Model 1: Nano Banana Pro Edit deneniyor...");
+        console.log("Mode:", isSpecificEdit ? "SPECIFIC EDIT" : "FULL REDESIGN");
+        resultImageUrl = await generateWithNanoBananaPro([imageUrl], designPrompt, FAL_KEY);
+        console.log("✅ Nano Banana Pro başarılı!");
+      } catch (err) {
+        console.error("❌ Nano Banana Pro hatası:", err);
+      }
+
+      // Model 2: Nano Banana 2 (hızlı fallback)
+      if (!resultImageUrl) {
+        try {
+          console.log("Model 2: Nano Banana 2 Edit deneniyor...");
+          resultImageUrl = await generateWithNanoBanana2([imageUrl], designPrompt, FAL_KEY);
+          console.log("✅ Nano Banana 2 başarılı!");
+        } catch (err) {
+          console.error("❌ Nano Banana 2 hatası:", err);
+        }
+      }
+
+      // Model 3: FLUX 2 Pro Edit (fallback)
+      if (!resultImageUrl) {
+        try {
+          const strength = isSpecificEdit ? 0.35 : (options.keepLayout ? 0.70 : 0.90);
+          console.log("Model 3: FLUX 2 Pro Edit deneniyor... (strength:", strength, ")");
+          resultImageUrl = await generateWithFlux2ProEdit(imageUrl, designPrompt, FAL_KEY, strength);
+          console.log("✅ FLUX 2 Pro Edit başarılı!");
+        } catch (err) {
+          console.error("❌ FLUX 2 Pro Edit hatası:", err);
+        }
       }
     }
 
-    // Model 3: FLUX 2 Pro Edit (fallback)
-    if (!resultImageUrl) {
-      try {
-        const strength = isSpecificEdit ? 0.35 : (options.keepLayout ? 0.70 : 0.90);
-        console.log("Model 3: FLUX 2 Pro Edit deneniyor... (strength:", strength, ")");
-        resultImageUrl = await generateWithFlux2ProEdit(imageUrl, designPrompt, FAL_KEY, strength);
-        console.log("✅ FLUX 2 Pro Edit başarılı!");
-      } catch (err) {
-        console.error("❌ FLUX 2 Pro Edit hatası:", err);
-      }
-    }
-
-    // Model 4: FLUX Dev image-to-image (son çare)
+    // Son çare: FLUX Dev (her iki modda da)
     if (!resultImageUrl) {
       try {
         const strength = isSpecificEdit ? 0.35 : (options.keepLayout ? 0.70 : 0.90);
@@ -457,12 +496,49 @@ async function generateWithNanoBanana2(imageData: string | string[], prompt: str
 }
 
 // ============================================
+// FLUX 2 KONTEXT / FLEX — Multi-Reference Edit
+// ============================================
+async function generateWithFluxKontext(imageUrls: string[], prompt: string, apiKey: string): Promise<string> {
+  const requestBody = {
+    prompt: prompt,
+    image_urls: imageUrls,
+    image_size: "landscape_16_9",
+    num_images: 1,
+    output_format: "png",
+  };
+
+  console.log("FLUX Kontext request:", JSON.stringify({ ...requestBody, prompt: prompt.substring(0, 100) + "..." }));
+
+  const response = await fetch("https://fal.run/fal-ai/flux-2-flex/edit", {
+    method: "POST",
+    headers: {
+      "Authorization": `Key ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`FLUX 2 Flex failed: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+
+  if (data.images && data.images.length > 0) {
+    return data.images[0].url;
+  }
+  throw new Error("No images in FLUX 2 Flex response");
+}
+
+// ============================================
 // MODEL 3: FLUX 2 Pro Edit
 // ============================================
-async function generateWithFlux2ProEdit(imageData: string, prompt: string, apiKey: string, strength?: number): Promise<string> {
+async function generateWithFlux2ProEdit(imageData: string, prompt: string, apiKey: string, strength?: number, referenceUrl?: string | null): Promise<string> {
+  const imageList = referenceUrl ? [imageData, referenceUrl] : [imageData];
   const requestBody: Record<string, unknown> = {
     prompt: prompt,
-    image_urls: [imageData],
+    image_urls: imageList,
   };
   if (strength !== undefined) {
     requestBody.strength = strength;
